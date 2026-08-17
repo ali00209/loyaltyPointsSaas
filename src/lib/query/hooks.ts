@@ -2,40 +2,49 @@
 
 import {
   ApiError,
-  assignRule,
-  createAdminRule,
   createCustomer,
   createProduct,
   createReward,
+  createRule,
   createTenant,
   createTransaction,
-  deleteAdminRule,
   deleteCustomer,
   deleteProduct,
   deleteReward,
+  deleteRule,
   fetchAdminOverview,
-  fetchAdminRules,
   fetchAdminTenant,
   fetchAdminTenantCustomers,
   fetchAdminTenantTransactions,
   fetchAdminTenants,
+  fetchApiKey,
   fetchAssignedRules,
   fetchCurrentUser,
   fetchCustomers,
   fetchDashboard,
+  fetchPortalCustomer,
+  fetchPortalOverview,
+  fetchPortalPurchases,
+  fetchPortalTenant,
   fetchProducts,
   fetchRewards,
   fetchTransactions,
   login,
   logout,
+  portalLogin,
+  portalLogout,
+  portalSignup,
+  postEvent,
+  postPortalEvent,
+  postPortalReview,
+  regenerateApiKey,
   register,
   seedDemoData,
   toggleRuleAssignment,
-  unassignRule,
-  updateAdminRule,
   updateCustomer,
   updateProduct,
   updateReward,
+  updateRule,
   updateTenant,
 } from "@/lib/api";
 import type {
@@ -48,6 +57,7 @@ import type {
   EarningRule,
   EarningRuleInput,
   LoginInput,
+  PostEventInput,
   Product,
   ProductInput,
   RedemptionReward,
@@ -165,6 +175,40 @@ export function useToggleRule() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.rules.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    },
+  });
+}
+
+export function useCreateRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: EarningRuleInput) => createRule(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.rules.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    },
+  });
+}
+
+export function useUpdateRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<EarningRuleInput> }) =>
+      updateRule(id, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.rules.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    },
+  });
+}
+
+export function useDeleteRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRule(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.rules.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
     },
   });
 }
@@ -355,70 +399,134 @@ export function useAdminTenantTransactions(id: string) {
   });
 }
 
-export function useAdminRules() {
-  return useQuery({
-    queryKey: queryKeys.admin.rules,
-    queryFn: fetchAdminRules,
-  });
-}
-
-export function useCreateAdminRule() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: EarningRuleInput) => createAdminRule(input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.rules });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.overview });
-    },
-  });
-}
-
-export function useUpdateAdminRule() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: Partial<EarningRuleInput> }) =>
-      updateAdminRule(id, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.rules });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.tenants });
-    },
-  });
-}
-
-export function useDeleteAdminRule() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => deleteAdminRule(id),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.rules });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.tenants });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.overview });
-    },
-  });
-}
-
-export function useAssignRule() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ruleId, tenantId }: { ruleId: string; tenantId: string }) =>
-      assignRule(ruleId, tenantId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.rules });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.tenants });
-    },
-  });
-}
-
-export function useUnassignRule() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ruleId, tenantId }: { ruleId: string; tenantId: string }) =>
-      unassignRule(ruleId, tenantId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.rules });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.tenants });
-    },
-  });
-}
-
 export type { AdminOverview, AdminTenant, AdminTenantDetail, EarningRule, RedemptionReward };
+
+// --- Events ---
+
+export function usePostEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PostEventInput) => postEvent(input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.customers.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
+}
+
+// --- Customer portal ---
+
+export function usePortalTenant(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.portal.tenant(slug),
+    queryFn: () => fetchPortalTenant(slug),
+    enabled: Boolean(slug),
+    retry: false,
+  });
+}
+
+export function usePortalCustomer() {
+  return useQuery({
+    queryKey: queryKeys.portal.customer,
+    queryFn: () =>
+      fetchPortalCustomer().catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 401) return null;
+        throw err;
+      }),
+    retry: false,
+  });
+}
+
+export function usePortalLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: portalLogin,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.portal.customer });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.portal.overview });
+    },
+  });
+}
+
+export function usePortalSignup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: portalSignup,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.portal.customer });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.portal.overview });
+    },
+  });
+}
+
+export function usePortalLogout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: portalLogout,
+    onSuccess: () => {
+      queryClient.clear();
+    },
+  });
+}
+
+export function usePortalOverview() {
+  return useQuery({
+    queryKey: queryKeys.portal.overview,
+    queryFn: fetchPortalOverview,
+  });
+}
+
+export function usePortalPurchases() {
+  return useQuery({
+    queryKey: queryKeys.portal.purchases,
+    queryFn: fetchPortalPurchases,
+  });
+}
+
+export function usePostPortalReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: postPortalReview,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.portal.purchases }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.portal.overview }),
+      ]);
+    },
+  });
+}
+
+export function usePostPortalEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: postPortalEvent,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.portal.overview }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.portal.purchases }),
+      ]);
+    },
+  });
+}
+
+// --- Settings ---
+
+export function useApiKey() {
+  return useQuery({
+    queryKey: queryKeys.portal.apiKey,
+    queryFn: fetchApiKey,
+  });
+}
+
+export function useRegenerateApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name?: string) => regenerateApiKey(name),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.portal.apiKey });
+    },
+  });
+}

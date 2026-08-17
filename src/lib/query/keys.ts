@@ -26,6 +26,12 @@ export const queryKeys = {
     tenant: (id: string) => ["admin", "tenants", id] as const,
     tenantCustomers: (id: string) => ["admin", "tenants", id, "customers"] as const,
     tenantTransactions: (id: string) => ["admin", "tenants", id, "transactions"] as const,
-    rules: ["admin", "rules"] as const,
+  },
+  portal: {
+    tenant: (slug: string) => ["portal", "tenant", slug] as const,
+    customer: ["portal", "customer"] as const,
+    overview: ["portal", "overview"] as const,
+    purchases: ["portal", "purchases"] as const,
+    apiKey: ["settings", "api-key"] as const,
   },
 };

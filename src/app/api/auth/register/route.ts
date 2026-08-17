@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tenants, users } from "@/db/schema";
 import { createToken, hashPassword } from "@/lib/auth";
+import { slugify } from "@/lib/slug";
+import { RegisterSchema, parseBody } from "@/lib/validations";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, name, businessName } = await req.json();
-
-    if (!email || !password || !name) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-    }
+    const parsed = await parseBody(req, RegisterSchema);
+    if (parsed.error) return parsed.error;
+    const { email, password, name, businessName } = parsed.data;
 
     const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (existing.length > 0) {
@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
     const [user] = await db.transaction(async (tx) => {
       const [tenant] = await tx
         .insert(tenants)
-        .values({ name: businessName || "My Business" })
+        .values({
+          name: businessName || "My Business",
+          slug: slugify(businessName || "My Business"),
+        })
         .returning();
       return tx
         .insert(users)

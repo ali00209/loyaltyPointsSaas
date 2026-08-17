@@ -79,7 +79,10 @@ export default function ProductsPage() {
     try {
       const payload: ProductInput = { ...form, price: String(form.price) };
       if (editing) {
-        await updateProductMutation.mutateAsync({ id: editing.id, input: payload });
+        await updateProductMutation.mutateAsync({
+          id: editing.id,
+          input: payload,
+        });
         showToast({ type: "info", body: "Product updated" });
       } else {
         await createProductMutation.mutateAsync(payload);
@@ -175,13 +178,11 @@ export default function ProductsPage() {
           data={filtered}
           idKey="id"
           hasHover
-          density="balanced"
-          textOverflow="truncate"
           columns={[
             {
               key: "name",
               header: "Product",
-              width: proportional(2),
+              width: proportional(1),
               renderCell: (p: Product) => (
                 <Text type="body" weight="medium">
                   {p.name}
@@ -191,7 +192,6 @@ export default function ProductsPage() {
             {
               key: "sku",
               header: "SKU",
-              width: proportional(1),
               renderCell: (p: Product) => (
                 <Text type="code" color="secondary">
                   {p.sku}
@@ -201,8 +201,6 @@ export default function ProductsPage() {
             {
               key: "price",
               header: "Price",
-              align: "end",
-              width: pixel(100),
               renderCell: (p: Product) => (
                 <Text type="body" weight="medium" hasTabularNumbers>
                   ${parseFloat(p.price).toFixed(2)}
@@ -212,7 +210,6 @@ export default function ProductsPage() {
             {
               key: "category",
               header: "Category",
-              width: pixel(140),
               renderCell: (p: Product) => (
                 <Badge variant="neutral" label={p.category} />
               ),
@@ -220,7 +217,6 @@ export default function ProductsPage() {
             {
               key: "status",
               header: "Status",
-              width: pixel(110),
               renderCell: (p: Product) => (
                 <Switch
                   label={`${p.name} status`}
@@ -233,21 +229,19 @@ export default function ProductsPage() {
             {
               key: "actions",
               header: "Actions",
-              align: "end",
-              width: pixel(150),
+              align: "center",
               renderCell: (p: Product) => (
-                <HStack gap={1} hAlign="end">
+                <HStack gap={1} hAlign="center">
                   <Button
                     label="Edit"
-                    variant="ghost"
+                    variant="primary"
                     size="sm"
                     onClick={() => openEdit(p)}
                   />
                   <Button
                     label="Delete"
-                    variant="ghost"
+                    variant="destructive"
                     size="sm"
-                    className="text-(--color-text-red)"
                     onClick={() => handleDelete(p)}
                   />
                 </HStack>
@@ -298,7 +292,7 @@ export default function ProductsPage() {
             onChange={(v) => setForm({ ...form, category: v })}
           />
         </VStack>
-        <HStack gap={3}>
+        <HStack gap={3} style={{ marginTop: 20 }}>
           <Button
             label="Cancel"
             variant="secondary"

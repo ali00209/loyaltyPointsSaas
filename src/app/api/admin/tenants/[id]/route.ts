@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { earningRules, tenantEarningRules, tenants, users } from "@/db/schema";
+import { earningRules, tenants, users } from "@/db/schema";
 import { requireAdminUser } from "@/lib/api-guard";
+import { formulaTextFromColumns } from "@/lib/rule-builder";
+import { UpdateTenantSchema, parseBody } from "@/lib/validations";
 import { eq, and } from "drizzle-orm";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -14,6 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .select({
       id: tenants.id,
       name: tenants.name,
+      slug: tenants.slug,
       brandingConfig: tenants.brandingConfig,
       suspended: tenants.suspended,
       createdAt: tenants.createdAt,
@@ -27,30 +30,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
 
-  const assignments = await db
-    .select({
-      assignmentId: tenantEarningRules.id,
-      assignmentActive: tenantEarningRules.active,
-      id: earningRules.id,
-      name: earningRules.name,
-      triggerType: earningRules.triggerType,
-      pointsFormula: earningRules.pointsFormula,
-    })
-    .from(tenantEarningRules)
-    .innerJoin(earningRules, eq(tenantEarningRules.ruleId, earningRules.id))
-    .where(eq(tenantEarningRules.tenantId, id));
+  const rules = await db
+    .select()
+    .from(earningRules)
+    .where(eq(earningRules.tenantId, id));
 
   return NextResponse.json({
     tenant: {
       ...tenant,
       brandingConfig: tenant.brandingConfig,
-      assignedRules: assignments.map((a) => ({
-        assignmentId: a.assignmentId,
-        assignmentActive: a.assignmentActive,
-        id: a.id,
-        name: a.name,
-        triggerType: a.triggerType,
-        pointsPerUnit: a.pointsFormula.pointsPerUnit,
+      assignedRules: rules.map((r) => ({
+        id: r.id,
+        name: r.name,
+        eventType: r.eventType,
+        perItem: r.perItem,
+        active: r.active,
+        formulaText: formulaTextFromColumns(r),
       })),
     },
   });
@@ -61,12 +56,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if ("error" in guard) return guard.error;
 
   const { id } = await params;
-  const body = await req.json();
+
+  const parsed = await parseBody(req, UpdateTenantSchema);
+  if (parsed.error) return parsed.error;
+  const body = parsed.data;
 
   const setValues: Record<string, unknown> = { updatedAt: new Date() };
   if (body.name !== undefined) setValues.name = body.name;
   if (body.brandingConfig !== undefined) setValues.brandingConfig = body.brandingConfig;
-  if (body.suspended !== undefined) setValues.suspended = Boolean(body.suspended);
+  if (body.suspended !== undefined) setValues.suspended = body.suspended;
 
   const [tenant] = await db
     .update(tenants)

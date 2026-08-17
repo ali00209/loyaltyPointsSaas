@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { products } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
+import { CreateProductSchema, UpdateProductSchema, parseBody } from "@/lib/validations";
 import { eq, and, desc } from "drizzle-orm";
 
 export async function GET() {
@@ -23,12 +24,9 @@ export async function POST(req: NextRequest) {
   if ("error" in guard) return guard.error;
   const tenantId = guard.tenantId;
 
-  const body = await req.json();
-  const { name, sku, price, category } = body;
-
-  if (!name || !sku || !price) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-  }
+  const parsed = await parseBody(req, CreateProductSchema);
+  if (parsed.error) return parsed.error;
+  const { name, sku, price, category } = parsed.data;
 
   const [product] = await db
     .insert(products)
@@ -49,10 +47,9 @@ export async function PUT(req: NextRequest) {
   if ("error" in guard) return guard.error;
   const tenantId = guard.tenantId;
 
-  const body = await req.json();
-  const { id, name, sku, price, category, active } = body;
-
-  if (!id) return NextResponse.json({ error: "Product ID required" }, { status: 400 });
+  const parsed = await parseBody(req, UpdateProductSchema);
+  if (parsed.error) return parsed.error;
+  const { id, name, sku, price, category, active } = parsed.data;
 
   const [product] = await db
     .update(products)

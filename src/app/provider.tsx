@@ -1,9 +1,10 @@
 "use client";
 
+import { appTheme } from "@/themes/appTheme";
 import { LayerProvider, Theme } from "@astryxdesign/core";
 import { neutralTheme } from "@astryxdesign/theme-neutral";
 import { y2kTheme } from "@astryxdesign/theme-y2k";
-import { loyaltyhubTheme } from "../themes/loyaltyhub/loyaltyhubTheme";
+import { butterTheme } from "@astryxdesign/theme-butter";
 
 export default function ThemeProvider({
   children,
@@ -11,7 +12,7 @@ export default function ThemeProvider({
   children: React.ReactNode;
 }) {
   return (
-    <Theme theme={y2kTheme}>
+    <Theme theme={butterTheme}>
       <LayerProvider>{children}</LayerProvider>
     </Theme>
   );

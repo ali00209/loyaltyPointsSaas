@@ -98,30 +98,14 @@ export default function AdminTenantsPage() {
           data={tenants}
           idKey="id"
           hasHover
-          textOverflow="truncate"
           columns={[
             {
               key: "name",
               header: "Tenant",
               renderCell: (t: AdminTenant) => (
-                <VStack gap={0} hAlign="stretch">
-                  <Text type="body" weight="medium">
-                    {t.name}
-                  </Text>
-                  {t.brandingConfig?.brandColor && (
-                    <HStack gap={1}>
-                      <HStack
-                        width={12}
-                        height={12}
-                        className="rounded-full"
-                        style={{ backgroundColor: t.brandingConfig.brandColor }}
-                      />
-                      <Text type="supporting" color="secondary">
-                        Branded
-                      </Text>
-                    </HStack>
-                  )}
-                </VStack>
+                <Text type="body" weight="medium">
+                  {t.name}
+                </Text>
               ),
             },
             {
@@ -146,7 +130,6 @@ export default function AdminTenantsPage() {
             {
               key: "customers",
               header: "Customers",
-              align: "end",
               renderCell: (t: AdminTenant) => (
                 <Text type="body" hasTabularNumbers>
                   {t.customerCount}
@@ -156,7 +139,6 @@ export default function AdminTenantsPage() {
             {
               key: "rewards",
               header: "Rewards",
-              align: "end",
               renderCell: (t: AdminTenant) => (
                 <Text type="body" hasTabularNumbers>
                   {t.rewardCount}
@@ -175,8 +157,7 @@ export default function AdminTenantsPage() {
             },
             {
               key: "actions",
-              header: "",
-              align: "end",
+              header: "Actions",
               renderCell: (t: AdminTenant) => (
                 <Button
                   label="Manage"

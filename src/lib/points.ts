@@ -4,15 +4,20 @@ import {
   customerRuleBalances,
   customers,
   earningRules,
+  events,
   pointTransactions,
+  products,
   redemptionRewards,
-  tenantEarningRules,
 } from "@/db/schema";
 import {
-  calculatePoints,
-  evaluateRules,
-  type EarnRuleConfig,
-  type TransactionFacts,
+  buildStructuredFormula,
+  conditionsMatch,
+  deriveEventKey,
+  evaluateFormula,
+  eventLabel,
+  validateEventPayload,
+  type EventType,
+  type StructuredFormula,
 } from "@/lib/rules";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -44,11 +49,6 @@ export function isRuleActive(rule: {
   if (rule.activeFrom && now < rule.activeFrom) return false;
   if (rule.activeUntil && now > rule.activeUntil) return false;
   return true;
-}
-
-function toOrderAmount(value: number | string | null | undefined): string | null {
-  if (value === null || value === undefined || value === "") return null;
-  return String(value);
 }
 
 // Expire any buckets past their expires_at. Used inside write transactions
@@ -196,87 +196,254 @@ async function consumePoints(
     );
 }
 
-export interface EarnInput {
+export interface ApplyEventInput {
   tenantId: string;
   customerId: string;
-  ruleId: string;
-  orderAmount?: number | string | null;
-  itemQuantity?: number | null;
-  productId?: string | null;
+  eventType: EventType;
+  payload: Record<string, unknown>;
+  /** Caller-supplied idempotency key (overrides the derived key). */
+  eventKey?: string | null;
+  occurredAt?: Date;
   description?: string | null;
-  metadata?: Record<string, unknown>;
 }
 
-export async function applyEarn(input: EarnInput) {
-  return withExpiry(async (tx) => {
-    const [assignment] = await tx
-      .select()
-      .from(tenantEarningRules)
-      .where(
-        and(
-          eq(tenantEarningRules.tenantId, input.tenantId),
-          eq(tenantEarningRules.ruleId, input.ruleId),
-        ),
-      )
-      .limit(1);
+export interface AwardDetail {
+  ruleId: string;
+  ruleName: string;
+  points: number;
+}
 
-    if (!assignment || !assignment.active) {
-      throw new PointsError("Rule is not assigned and active for your program");
+export interface ApplyEventResult {
+  eventId: string;
+  duplicate: boolean;
+  totalAwarded: number;
+  awards: AwardDetail[];
+}
+
+function isDuplicateKeyError(err: unknown): boolean {
+  return err instanceof Error && /duplicate key value/i.test(err.message);
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+// Compute the facts available to a rule for a single line item / order.
+async function buildEventFacts(
+  tx: Tx,
+  input: ApplyEventInput,
+): Promise<{ orderFacts: Record<string, unknown>; itemFacts: Record<string, unknown>[] }> {
+  const orderFacts: Record<string, unknown> = {};
+  const itemFacts: Record<string, unknown>[] = [];
+
+  if (input.eventType === "purchase") {
+    const items = (input.payload.items ?? []) as Record<string, unknown>[];
+    const productIds = items
+      .map((it) => it.productId)
+      .filter((id): id is string => typeof id === "string" && isUuid(id));
+    const catalog =
+      productIds.length > 0
+        ? await tx
+            .select()
+            .from(products)
+            .where(and(eq(products.tenantId, input.tenantId), inArray(products.id, productIds)))
+        : [];
+
+    const productMap = new Map(catalog.map((p) => [p.id, p]));
+    const totalQuantity = items.reduce(
+      (sum, it) => sum + Number(it.quantity ?? 0),
+      0,
+    );
+    orderFacts.orderAmount = Number(input.payload.orderAmount ?? 0);
+    orderFacts.itemQuantity = totalQuantity;
+    orderFacts.itemCount = items.length;
+
+    for (const it of items) {
+      const product = productMap.get(String(it.productId));
+      const unitPrice = Number(it.unitPrice ?? 0);
+      itemFacts.push({
+        quantity: Number(it.quantity ?? 0),
+        unitPrice,
+        productId: String(it.productId),
+        productPrice: product ? Number(product.price) : unitPrice,
+        productCategory: product?.category ?? null,
+      });
     }
-
-    const [rule] = await tx
-      .select()
-      .from(earningRules)
-      .where(eq(earningRules.id, input.ruleId))
-      .limit(1);
-
-    if (!rule || !isRuleActive(rule)) {
-      throw new PointsError("Rule is not active");
+  } else if (input.eventType === "review") {
+    const productIds = [input.payload.productId].filter(
+      (id): id is string => typeof id === "string" && isUuid(id),
+    );
+    const [product] =
+      productIds.length > 0
+        ? await tx
+            .select()
+            .from(products)
+            .where(
+              and(
+                eq(products.tenantId, input.tenantId),
+                inArray(products.id, productIds),
+              ),
+            )
+            .limit(1)
+        : [];
+    if (product) {
+      orderFacts.productId = product.id;
+      orderFacts.productPrice = Number(product.price);
+      orderFacts.productCategory = product.category;
+    } else {
+      orderFacts.productId = input.payload.productId ?? null;
     }
+    orderFacts.rating = Number(input.payload.rating ?? 0);
+  } else if (input.eventType === "social_share") {
+    orderFacts.platform = input.payload.platform ?? null;
+  }
 
-    const config: EarnRuleConfig = {
-      triggerType: rule.triggerType,
-      conditions: rule.conditions,
-      pointsFormula: rule.pointsFormula,
+  return { orderFacts, itemFacts };
+}
+
+interface MatchedRuleRow {
+  rule: typeof earningRules.$inferSelect;
+  points: number;
+}
+
+// Evaluate every active rule for this event type and stack the points.
+async function evaluateRulesForEvent(
+  tx: Tx,
+  input: ApplyEventInput,
+  orderFacts: Record<string, unknown>,
+  itemFacts: Record<string, unknown>[],
+): Promise<MatchedRuleRow[]> {
+  const rows = await tx
+    .select({ rule: earningRules })
+    .from(earningRules)
+    .where(
+      and(
+        eq(earningRules.tenantId, input.tenantId),
+        eq(earningRules.eventType, input.eventType),
+        eq(earningRules.active, true),
+      ),
+    );
+
+  const matches: MatchedRuleRow[] = [];
+  for (const { rule } of rows) {
+    if (!isRuleActive(rule)) continue;
+
+    const structured: StructuredFormula = {
+      type: (rule.formulaType as "rate" | "flat") ?? "rate",
+      basis: rule.formulaBasis ?? "orderAmount",
+      rate: Number(rule.formulaRate),
+      flatAmount: rule.formulaFlatAmount ?? 0,
+      rounding: rule.formulaRounding as StructuredFormula["rounding"],
+      minPoints: rule.formulaMinPoints,
+      maxPoints: rule.formulaMaxPoints,
     };
+    const formula = buildStructuredFormula(structured);
 
-    const facts: TransactionFacts = {
-      orderAmount: Number(input.orderAmount ?? 0),
-      itemQuantity: Number(input.itemQuantity ?? 0),
-      productId: input.productId || null,
-    };
-
-    if (evaluateRules([config], facts).length === 0) {
-      throw new PointsError("Order does not match this rule's conditions");
+    let points = 0;
+    if (rule.perItem) {
+      for (const facts of itemFacts) {
+        if (conditionsMatch(rule.conditions as never, facts)) {
+          points += evaluateFormula(formula, facts);
+        }
+      }
+    } else if (conditionsMatch(rule.conditions as never, orderFacts)) {
+      points += evaluateFormula(formula, orderFacts);
     }
 
-    const points = calculatePoints(rule.pointsFormula, facts);
+    if (points > 0) matches.push({ rule, points });
+  }
+  return matches;
+}
 
-    const [transaction] = await tx
-      .insert(pointTransactions)
-      .values({
+export async function applyEvent(
+  input: ApplyEventInput,
+  outerTx?: Tx,
+): Promise<ApplyEventResult> {
+  validateEventPayload(input.eventType, input.payload);
+
+  const eventKey =
+    input.eventKey ?? deriveEventKey(input.eventType, input.customerId, input.payload);
+
+  const run = async (tx: Tx) => {
+    if (eventKey) {
+      const [existing] = await tx
+        .select({ id: events.id })
+        .from(events)
+        .where(and(eq(events.tenantId, input.tenantId), eq(events.eventKey, eventKey)))
+        .limit(1);
+      if (existing) {
+        return {
+          eventId: existing.id,
+          duplicate: true,
+          totalAwarded: 0,
+          awards: [],
+        };
+      }
+    }
+
+    let eventId: string;
+    try {
+      const [eventRow] = await tx
+        .insert(events)
+        .values({
+          tenantId: input.tenantId,
+          customerId: input.customerId,
+          eventType: input.eventType,
+          eventKey,
+          payload: input.payload,
+          occurredAt: input.occurredAt ?? new Date(),
+        })
+        .returning({ id: events.id });
+      eventId = eventRow.id;
+    } catch (err) {
+      if (isDuplicateKeyError(err) && eventKey) {
+        return {
+          eventId: "",
+          duplicate: true,
+          totalAwarded: 0,
+          awards: [],
+        };
+      }
+      throw err;
+    }
+
+    const { orderFacts, itemFacts } = await buildEventFacts(tx, input);
+    const matches = await evaluateRulesForEvent(tx, input, orderFacts, itemFacts);
+
+    const awards: AwardDetail[] = [];
+    let totalAwarded = 0;
+
+    for (const { rule, points } of matches) {
+      await creditPoints(tx, {
+        tenantId: input.tenantId,
+        customerId: input.customerId,
+        ruleId: rule.id,
+        points,
+        expiresAt: expiresAfter(rule.pointsExpireAfterDays),
+      });
+      await tx.insert(pointTransactions).values({
         tenantId: input.tenantId,
         customerId: input.customerId,
         transactionType: "earn",
         points,
-        orderAmount: toOrderAmount(input.orderAmount),
-        itemQuantity: input.itemQuantity ?? null,
+        orderAmount: orderFacts.orderAmount != null ? String(orderFacts.orderAmount) : null,
+        itemQuantity:
+          typeof orderFacts.itemQuantity === "number" ? orderFacts.itemQuantity : null,
         ruleId: rule.id,
-        description: input.description || null,
-        metadata: input.metadata ?? {},
-      })
-      .returning();
+        eventId,
+        description: input.description ?? `Earned via ${eventLabel(input.eventType)}`,
+        metadata: { eventType: input.eventType, eventKey: eventKey ?? undefined },
+      });
+      totalAwarded += points;
+      awards.push({ ruleId: rule.id, ruleName: rule.name, points });
+    }
 
-    await creditPoints(tx, {
-      tenantId: input.tenantId,
-      customerId: input.customerId,
-      ruleId: rule.id,
-      points,
-      expiresAt: expiresAfter(rule.pointsExpireAfterDays),
-    });
+    return { eventId, duplicate: false, totalAwarded, awards };
+  };
 
-    return { transaction, pointsAwarded: points };
-  });
+  return outerTx ? run(outerTx) : withExpiry(run);
 }
 
 export interface RedeemInput {
@@ -421,5 +588,5 @@ export async function applyAdjust(input: AdjustInput) {
 
 // Used to reset the demo when reseeding.
 export async function resetDemoData() {
-  await pool.query("TRUNCATE customer_rule_balances, point_transactions, redemption_rewards, tenant_earning_rules, earning_rules, customers, products, users, tenants RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE api_keys, events, customer_rule_balances, point_transactions, redemption_rewards, earning_rules, customers, products, users, tenants RESTART IDENTITY CASCADE");
 }

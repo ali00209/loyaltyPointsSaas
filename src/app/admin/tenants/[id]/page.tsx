@@ -21,14 +21,8 @@ import {
   useAdminTenantTransactions,
   useUpdateTenant,
 } from "@/lib/query";
+import { eventLabel } from "@/lib/rules";
 import type { Customer, Transaction } from "@/types";
-
-const triggerTypeLabels: Record<string, string> = {
-  flat_rate: "Flat Rate",
-  per_product: "Per Product",
-  price_range: "Price Range",
-  bulk_quantity: "Bulk Quantity",
-};
 
 export default function AdminTenantDetailPage() {
   const params = useParams<{ id: string }>();
@@ -128,27 +122,26 @@ export default function AdminTenantDetailPage() {
       <Card padding={6}>
         <VStack gap={4} hAlign="stretch">
           <HStack hAlign="between">
-            <Heading level={2}>Assigned Earning Rules</Heading>
+            <Heading level={2}>Earning Rules</Heading>
           </HStack>
           {tenant.assignedRules.length === 0 ? (
             <EmptyState
-              title="No rules assigned"
-              description="Assign rules from the Rules page"
+              title="No rules yet"
+              description="This tenant hasn't created any earning rules"
               isCompact
             />
           ) : (
             <VStack gap={2} hAlign="stretch">
               {tenant.assignedRules.map((r) => (
-                <HStack key={r.assignmentId} hAlign="between">
+                <HStack key={r.id} hAlign="between">
                   <Text type="body" weight="medium">
                     {r.name}
                   </Text>
                   <HStack gap={2}>
                     <Text type="supporting" color="secondary">
-                      {triggerTypeLabels[r.triggerType] || r.triggerType} ·{" "}
-                      {r.pointsPerUnit} pts/unit
+                      {eventLabel(r.eventType)} · {r.formulaText}
                     </Text>
-                    {r.assignmentActive ? (
+                    {r.active ? (
                       <Badge variant="green" label="Active" />
                     ) : (
                       <Badge variant="neutral" label="Off" />
@@ -177,7 +170,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "name",
                   header: "Customer",
-                  width: proportional(2),
                   renderCell: (c: Customer) => (
                     <Text type="body" weight="medium">
                       {c.name}
@@ -187,7 +179,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "email",
                   header: "Email",
-                  width: proportional(2),
                   renderCell: (c: Customer) => (
                     <Text type="body" color="secondary" maxLines={1}>
                       {c.email || "—"}
@@ -240,7 +231,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "customer",
                   header: "Customer",
-                  width: proportional(2),
                   renderCell: (t: Transaction) => (
                     <Text type="body" weight="medium" maxLines={1}>
                       {t.customerName || "Unknown"}
@@ -250,7 +240,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "type",
                   header: "Type",
-                  width: pixel(90),
                   renderCell: (t: Transaction) => (
                     <Badge
                       variant={
@@ -267,8 +256,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "points",
                   header: "Points",
-                  align: "end",
-                  width: pixel(90),
                   renderCell: (t: Transaction) => (
                     <Text type="body" hasTabularNumbers>
                       {t.points > 0 ? "+" : ""}
@@ -279,7 +266,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "description",
                   header: "Description",
-                  width: proportional(3),
                   renderCell: (t: Transaction) => (
                     <Text type="body" color="secondary" maxLines={1}>
                       {t.description || "—"}
@@ -289,7 +275,6 @@ export default function AdminTenantDetailPage() {
                 {
                   key: "createdAt",
                   header: "Date",
-                  width: pixel(110),
                   renderCell: (t: Transaction) => (
                     <Text type="body" color="secondary">
                       {new Date(t.createdAt).toLocaleDateString()}

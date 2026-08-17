@@ -4,6 +4,8 @@ export interface Customer extends Record<string, unknown> {
   name: string;
   email: string | null;
   phone: string | null;
+  referralCode: string | null;
+  isActive: boolean;
   totalPointsEarned: number;
   currentBalance: number;
   joinDate: string;

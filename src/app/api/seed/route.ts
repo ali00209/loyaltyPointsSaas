@@ -2,22 +2,32 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
   customers,
-  customerRuleBalances,
   earningRules,
-  pointTransactions,
   products,
   redemptionRewards,
-  tenantEarningRules,
   tenants,
   users,
 } from "@/db/schema";
 import { hashPassword } from "@/lib/auth";
-import { basisForTrigger, type RuleConditions } from "@/lib/rules";
+import { applyAdjust, applyEvent, applyRedeem } from "@/lib/points";
 import { resetDemoData } from "@/lib/points";
+import type { EventType, RuleGroupType } from "@/lib/rules";
 import { eq } from "drizzle-orm";
 
 const ADMIN_EMAIL = "admin@loyaltyapp.com";
 const DEMO_EMAIL = "demo@loyaltyapp.com";
+const PORTAL_EMAIL = "sarah.m@email.com";
+const PORTAL_PASSWORD = "customer123";
+
+function code(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function rg(rules: RuleGroupType["rules"]): RuleGroupType {
+  return { combinator: "and", rules };
+}
+
+const ALL: RuleGroupType = { combinator: "and", rules: [] };
 
 export async function POST() {
   try {
@@ -37,6 +47,7 @@ export async function POST() {
       .insert(tenants)
       .values({
         name: "Urban Coffee Co.",
+        slug: "urban-coffee-co",
         brandingConfig: { brandColor: "#8c5a2b", logoUrl: null },
       })
       .returning();
@@ -49,238 +60,399 @@ export async function POST() {
       tenantId: tenant.id,
     });
 
-    // --- Admin-authored earning rules (no multiplier / bonus) ---
-    const ruleInputs = [
+    // --- Products ---
+    const insertedProducts = await db
+      .insert(products)
+      .values(
+        [
+          { name: "Espresso", sku: "COF-001", price: "3.50", category: "Beverages" },
+          { name: "Cappuccino", sku: "COF-002", price: "4.50", category: "Beverages" },
+          { name: "Latte", sku: "COF-003", price: "5.00", category: "Beverages" },
+          { name: "Croissant", sku: "BAK-001", price: "3.00", category: "Bakery" },
+          { name: "Blueberry Muffin", sku: "BAK-002", price: "3.50", category: "Bakery" },
+          { name: "Avocado Toast", sku: "FOD-001", price: "8.50", category: "Food" },
+          { name: "Breakfast Burrito", sku: "FOD-002", price: "9.00", category: "Food" },
+          { name: "Seasonal Blend Bag (250g)", sku: "RTL-001", price: "14.99", category: "Retail" },
+          { name: "Ceramic Mug", sku: "RTL-002", price: "12.00", category: "Retail" },
+          { name: "Cold Brew (Large)", sku: "COF-004", price: "5.50", category: "Beverages" },
+        ].map((p) => ({ ...p, tenantId: tenant.id })),
+      )
+      .returning();
+
+    // --- Rules ---
+    const ruleInputs: {
+      name: string;
+      description: string;
+      eventType: EventType;
+      perItem: boolean;
+      conditions: RuleGroupType;
+      formulaType: string;
+      formulaBasis: string | null;
+      formulaRate: string;
+      formulaFlatAmount: number | null;
+      formulaRounding: string;
+      formulaMinPoints: number | null;
+      formulaMaxPoints: number | null;
+      pointsExpireAfterDays: number | null;
+    }[] = [
       {
         name: "Standard Spend Rewards",
-        description: "Earn 1 point for every $1 spent on any purchase",
-        triggerType: "flat_rate" as const,
-        productId: null,
-        minPrice: null,
-        maxPrice: null,
-        minQuantity: null,
-        pointsPerUnit: 1,
+        description: "Earn 1 point per $1 spent on any purchase",
+        eventType: "purchase",
+        perItem: false,
+        conditions: ALL,
+        formulaType: "rate",
+        formulaBasis: "orderAmount",
+        formulaRate: "100",
+        formulaFlatAmount: null,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
         pointsExpireAfterDays: null,
       },
       {
-        name: "Premium Coffee Bonus",
-        description: "Earn 3 points per specialty coffee purchased",
-        triggerType: "per_product" as const,
-        productId: "LATTE_PLACEHOLDER",
-        minPrice: null,
-        maxPrice: null,
-        minQuantity: null,
-        pointsPerUnit: 3,
-        pointsExpireAfterDays: 90,
-      },
-      {
-        name: "Big Spender Bonus",
-        description: "Orders $20-$50 earn 2 points per dollar",
-        triggerType: "price_range" as const,
-        productId: null,
-        minPrice: 20,
-        maxPrice: 50,
-        minQuantity: null,
-        pointsPerUnit: 2,
+        name: "Beverage Bonus",
+        description: "Earn 2 points per beverage line item",
+        eventType: "purchase",
+        perItem: true,
+        conditions: rg([{ field: "productCategory", operator: "=", value: "Beverages" }]),
+        formulaType: "rate",
+        formulaBasis: "quantity",
+        formulaRate: "200",
+        formulaFlatAmount: null,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
         pointsExpireAfterDays: null,
-      },
-      {
-        name: "Bulk Coffee Bean Reward",
-        description: "Buy 3+ bags of beans and earn 5 points per bag",
-        triggerType: "bulk_quantity" as const,
-        productId: null,
-        minPrice: null,
-        maxPrice: null,
-        minQuantity: 3,
-        pointsPerUnit: 5,
-        pointsExpireAfterDays: 30,
       },
       {
         name: "Bakery Loyalty",
         description: "Earn 2 points per bakery item",
-        triggerType: "per_product" as const,
-        productId: "CROISSANT_PLACEHOLDER",
-        minPrice: null,
-        maxPrice: null,
-        minQuantity: null,
-        pointsPerUnit: 2,
+        eventType: "purchase",
+        perItem: true,
+        conditions: rg([{ field: "productCategory", operator: "=", value: "Bakery" }]),
+        formulaType: "rate",
+        formulaBasis: "quantity",
+        formulaRate: "200",
+        formulaFlatAmount: null,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
         pointsExpireAfterDays: null,
+      },
+      {
+        name: "Big Spender Bonus",
+        description: "Orders $20-$50 earn 2 points per dollar",
+        eventType: "purchase",
+        perItem: false,
+        conditions: rg([
+          { field: "orderAmount", operator: ">=", value: 20 },
+          { field: "orderAmount", operator: "<=", value: 50 },
+        ]),
+        formulaType: "rate",
+        formulaBasis: "orderAmount",
+        formulaRate: "200",
+        formulaFlatAmount: null,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: null,
+      },
+      {
+        name: "Bulk Bean Reward",
+        description: "Buy 3+ units and earn 5 points per unit",
+        eventType: "purchase",
+        perItem: false,
+        conditions: rg([{ field: "itemQuantity", operator: ">=", value: 3 }]),
+        formulaType: "rate",
+        formulaBasis: "itemQuantity",
+        formulaRate: "500",
+        formulaFlatAmount: null,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: 30,
       },
       {
         name: "High-Value Purchase Reward",
         description: "Earn 3 points per dollar on orders $50+",
-        triggerType: "price_range" as const,
-        productId: null,
-        minPrice: 50,
-        maxPrice: 500,
-        minQuantity: null,
-        pointsPerUnit: 3,
+        eventType: "purchase",
+        perItem: false,
+        conditions: rg([{ field: "orderAmount", operator: ">=", value: 50 }]),
+        formulaType: "rate",
+        formulaBasis: "orderAmount",
+        formulaRate: "300",
+        formulaFlatAmount: null,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
         pointsExpireAfterDays: 180,
+      },
+      {
+        name: "Signup Welcome Bonus",
+        description: "New customers earn 50 points",
+        eventType: "customer_signup",
+        perItem: false,
+        conditions: ALL,
+        formulaType: "flat",
+        formulaBasis: null,
+        formulaRate: "0",
+        formulaFlatAmount: 50,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: 30,
+      },
+      {
+        name: "Review Bonus",
+        description: "Leave a 4-5 star review and earn 25 points",
+        eventType: "review",
+        perItem: false,
+        conditions: rg([{ field: "rating", operator: ">=", value: 4 }]),
+        formulaType: "flat",
+        formulaBasis: null,
+        formulaRate: "0",
+        formulaFlatAmount: 25,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: null,
+      },
+      {
+        name: "Newsletter Bonus",
+        description: "Join the newsletter and earn 20 points",
+        eventType: "newsletter_signup",
+        perItem: false,
+        conditions: ALL,
+        formulaType: "flat",
+        formulaBasis: null,
+        formulaRate: "0",
+        formulaFlatAmount: 20,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: null,
+      },
+      {
+        name: "Referral Bonus",
+        description: "Refer a friend and earn 100 points",
+        eventType: "referral",
+        perItem: false,
+        conditions: ALL,
+        formulaType: "flat",
+        formulaBasis: null,
+        formulaRate: "0",
+        formulaFlatAmount: 100,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: 90,
+      },
+      {
+        name: "Social Share Bonus",
+        description: "Share on social and earn 10 points",
+        eventType: "social_share",
+        perItem: false,
+        conditions: ALL,
+        formulaType: "flat",
+        formulaBasis: null,
+        formulaRate: "0",
+        formulaFlatAmount: 10,
+        formulaRounding: "floor",
+        formulaMinPoints: null,
+        formulaMaxPoints: null,
+        pointsExpireAfterDays: null,
       },
     ];
 
     const rules = [];
     for (const r of ruleInputs) {
-      const conditions: RuleConditions = {
-        productId: r.productId,
-        minPrice: r.minPrice,
-        maxPrice: r.maxPrice,
-        minQuantity: r.minQuantity,
-      };
       const [row] = await db
         .insert(earningRules)
-        .values({
-          name: r.name,
-          description: r.description,
-          triggerType: r.triggerType,
-          conditions,
-          pointsFormula: { basis: basisForTrigger(r.triggerType), pointsPerUnit: r.pointsPerUnit },
-          pointsExpireAfterDays: r.pointsExpireAfterDays,
-          active: true,
-        })
+        .values({ ...r, tenantId: tenant.id, active: true })
         .returning();
       rules.push(row);
     }
 
-    // --- Assign all rules to the demo tenant ---
-    await db.insert(tenantEarningRules).values(
-      rules.map((r) => ({ tenantId: tenant.id, ruleId: r.id, active: true })),
-    );
-
-    // --- Products (referenced by per_product rules) ---
-    const productData = [
-      { name: "Espresso", sku: "COF-001", price: "3.50", category: "Beverages" },
-      { name: "Cappuccino", sku: "COF-002", price: "4.50", category: "Beverages" },
-      { name: "Latte", sku: "COF-003", price: "5.00", category: "Beverages" },
-      { name: "Croissant", sku: "BAK-001", price: "3.00", category: "Bakery" },
-      { name: "Blueberry Muffin", sku: "BAK-002", price: "3.50", category: "Bakery" },
-      { name: "Avocado Toast", sku: "FOD-001", price: "8.50", category: "Food" },
-      { name: "Breakfast Burrito", sku: "FOD-002", price: "9.00", category: "Food" },
-      { name: "Seasonal Blend Bag (250g)", sku: "RTL-001", price: "14.99", category: "Retail" },
-      { name: "Ceramic Mug", sku: "RTL-002", price: "12.00", category: "Retail" },
-      { name: "Cold Brew (Large)", sku: "COF-004", price: "5.50", category: "Beverages" },
-    ];
-
-    const insertedProducts = await db
-      .insert(products)
-      .values(productData.map((p) => ({ ...p, tenantId: tenant.id })))
-      .returning();
-
-    // Point per_product rules at real product ids.
-    const latteRule = rules.find((r) => r.conditions.productId === "LATTE_PLACEHOLDER");
-    const croissantRule = rules.find((r) => r.conditions.productId === "CROISSANT_PLACEHOLDER");
-    if (latteRule) {
-      await db
-        .update(earningRules)
-        .set({ conditions: { ...latteRule.conditions, productId: insertedProducts[2].id } })
-        .where(eq(earningRules.id, latteRule.id));
-    }
-    if (croissantRule) {
-      await db
-        .update(earningRules)
-        .set({ conditions: { ...croissantRule.conditions, productId: insertedProducts[3].id } })
-        .where(eq(earningRules.id, croissantRule.id));
-    }
-
-    // --- Customers (no tiers) ---
+    // --- Customers ---
     const customerData = [
-      { name: "Sarah Mitchell", email: "sarah.m@email.com", phone: "+1-555-0101", balance: 1250, earned: 2800 },
-      { name: "James Chen", email: "james.chen@email.com", phone: "+1-555-0102", balance: 5430, earned: 8900 },
-      { name: "Maria Rodriguez", email: "maria.r@email.com", phone: "+1-555-0103", balance: 320, earned: 650 },
-      { name: "David Kim", email: "david.k@email.com", phone: "+1-555-0104", balance: 12500, earned: 15200 },
-      { name: "Emily Watson", email: "emily.w@email.com", phone: "+1-555-0105", balance: 890, earned: 1450 },
-      { name: "Robert Taylor", email: "robert.t@email.com", phone: "+1-555-0106", balance: 2100, earned: 3600 },
-      { name: "Lisa Park", email: "lisa.p@email.com", phone: "+1-555-0107", balance: 6700, earned: 11000 },
-      { name: "Michael Brown", email: "michael.b@email.com", phone: "+1-555-0108", balance: 450, earned: 750 },
-      { name: "Jennifer Davis", email: "jennifer.d@email.com", phone: "+1-555-0109", balance: 3200, earned: 5100 },
-      { name: "William Lee", email: "william.l@email.com", phone: "+1-555-0110", balance: 1800, earned: 2900 },
-      { name: "Amanda Foster", email: "amanda.f@email.com", phone: "+1-555-0111", balance: 150, earned: 150 },
-      { name: "Chris Martinez", email: "chris.m@email.com", phone: "+1-555-0112", balance: 7800, earned: 12400 },
+      { name: "Sarah Mitchell", email: PORTAL_EMAIL, phone: "+1-555-0101" },
+      { name: "James Chen", email: "james.chen@email.com", phone: "+1-555-0102" },
+      { name: "Maria Rodriguez", email: "maria.r@email.com", phone: "+1-555-0103" },
+      { name: "David Kim", email: "david.k@email.com", phone: "+1-555-0104" },
+      { name: "Emily Watson", email: "emily.w@email.com", phone: "+1-555-0105" },
+      { name: "Robert Taylor", email: "robert.t@email.com", phone: "+1-555-0106" },
+      { name: "Lisa Park", email: "lisa.p@email.com", phone: "+1-555-0107" },
     ];
 
-    const insertedCustomers = await db
-      .insert(customers)
-      .values(
-        customerData.map((c) => ({
+    const insertedCustomers = [];
+    for (let i = 0; i < customerData.length; i++) {
+      const c = customerData[i];
+      const [row] = await db
+        .insert(customers)
+        .values({
           tenantId: tenant.id,
           name: c.name,
           email: c.email,
           phone: c.phone,
-          currentBalance: c.balance,
-          totalPointsEarned: c.earned,
-        })),
+          referralCode: code(),
+          passwordHash:
+            c.email === PORTAL_EMAIL ? await hashPassword(PORTAL_PASSWORD) : null,
+          joinDate: new Date(Date.now() - (7 - i) * 86400000),
+        })
+        .returning();
+      insertedCustomers.push(row);
+    }
+
+    // --- Rewards ---
+    const rewards = await db
+      .insert(redemptionRewards)
+      .values(
+        [
+          { name: "Free Beverage", pointsCost: 500, rewardType: "physical_item" as const, inventoryLimit: 1000 },
+          { name: "Merchandise Item", pointsCost: 1000, rewardType: "physical_item" as const, inventoryLimit: 200 },
+          { name: "$25 Gift Card", pointsCost: 2500, rewardType: "gift_card" as const, inventoryLimit: null },
+          { name: "10% Off Discount", pointsCost: 300, rewardType: "discount" as const, inventoryLimit: null },
+          { name: "$10 Store Credit", pointsCost: 1000, rewardType: "store_credit" as const, inventoryLimit: null },
+        ].map((r) => ({ tenantId: tenant.id, active: true, redeemedCount: 0, details: {}, ...r })),
       )
       .returning();
 
-    // --- Rewards ---
-    const rewardData = [
-      { name: "Free Beverage", pointsCost: 500, rewardType: "physical_item" as const, inventoryLimit: 1000, redeemedCount: 1 },
-      { name: "Merchandise Item", pointsCost: 1000, rewardType: "physical_item" as const, inventoryLimit: 200, redeemedCount: 1 },
-      { name: "$25 Gift Card", pointsCost: 2500, rewardType: "gift_card" as const, inventoryLimit: null, redeemedCount: 1 },
-      { name: "10% Off Discount", pointsCost: 300, rewardType: "discount" as const, inventoryLimit: null, redeemedCount: 0 },
-      { name: "$10 Store Credit", pointsCost: 1000, rewardType: "store_credit" as const, inventoryLimit: null, redeemedCount: 0 },
-    ];
+    const [espresso, cappuccino, latte, croissant, muffin, avocado, burrito, beans, mug, coldBrew] =
+      insertedProducts;
 
-    const rewards = await db
-      .insert(redemptionRewards)
-      .values(rewardData.map((r) => ({ tenantId: tenant.id, ...r })))
-      .returning();
+    const item = (product: (typeof insertedProducts)[number], quantity = 1, unitPrice?: string) => ({
+      productId: product.id,
+      quantity,
+      unitPrice: unitPrice ?? product.price,
+    });
 
-    // --- Transactions ---
-    const now = new Date();
-    const earnRuleId = rules[0].id; // Standard Spend Rewards
-    const premiumRuleId = latteRule!.id;
-    const bigSpenderRuleId = rules[2].id;
-    const bulkRuleId = rules[3].id;
-    const bakeryRuleId = croissantRule!.id;
-    const highValueRuleId = rules[5].id;
-    const freeBeverageId = rewards[0].id;
-    const merchId = rewards[1].id;
-    const giftCardId = rewards[2].id;
+    // --- Events ---
+    const event = (customerId: string, eventType: Parameters<typeof applyEvent>[0]["eventType"], payload: Record<string, unknown>, eventKey?: string) =>
+      applyEvent({ tenantId: tenant.id, customerId, eventType, payload, eventKey });
 
-    const txData = [
-      { customerId: insertedCustomers[0].id, ruleId: earnRuleId, rewardId: null, type: "earn" as const, points: 45, description: "Morning coffee & pastry", orderAmount: "12.50", itemQuantity: null, daysAgo: 0 },
-      { customerId: insertedCustomers[1].id, ruleId: bigSpenderRuleId, rewardId: null, type: "earn" as const, points: 85, description: "Weekly coffee bean purchase", orderAmount: "29.99", itemQuantity: null, daysAgo: 0 },
-      { customerId: insertedCustomers[3].id, ruleId: highValueRuleId, rewardId: null, type: "earn" as const, points: 350, description: "Bulk retail order", orderAmount: "65.00", itemQuantity: null, daysAgo: 1 },
-      { customerId: insertedCustomers[1].id, ruleId: null, rewardId: freeBeverageId, type: "redeem" as const, points: -500, description: "Free beverage redemption", orderAmount: null, itemQuantity: null, daysAgo: 1 },
-      { customerId: insertedCustomers[4].id, ruleId: earnRuleId, rewardId: null, type: "earn" as const, points: 22, description: "Lunch order", orderAmount: "22.00", itemQuantity: null, daysAgo: 2 },
-      { customerId: insertedCustomers[6].id, ruleId: bulkRuleId, rewardId: null, type: "earn" as const, points: 55, description: "3 bags seasonal blend", orderAmount: "44.97", itemQuantity: 3, daysAgo: 2 },
-      { customerId: insertedCustomers[2].id, ruleId: premiumRuleId, rewardId: null, type: "earn" as const, points: 5, description: "Latte purchase", orderAmount: "5.00", itemQuantity: null, daysAgo: 3 },
-      { customerId: insertedCustomers[8].id, ruleId: earnRuleId, rewardId: null, type: "earn" as const, points: 35, description: "Breakfast combo", orderAmount: "17.50", itemQuantity: null, daysAgo: 3 },
-      { customerId: insertedCustomers[5].id, ruleId: null, rewardId: merchId, type: "redeem" as const, points: -1000, description: "Merchandise redemption", orderAmount: null, itemQuantity: null, daysAgo: 4 },
-      { customerId: insertedCustomers[9].id, ruleId: bakeryRuleId, rewardId: null, type: "earn" as const, points: 8, description: "2x Croissant", orderAmount: "6.00", itemQuantity: 2, daysAgo: 4 },
-      { customerId: insertedCustomers[11].id, ruleId: highValueRuleId, rewardId: null, type: "earn" as const, points: 200, description: "Catering order", orderAmount: "85.00", itemQuantity: null, daysAgo: 5 },
-      { customerId: insertedCustomers[0].id, ruleId: earnRuleId, rewardId: null, type: "earn" as const, points: 15, description: "Afternoon snack", orderAmount: "7.50", itemQuantity: null, daysAgo: 5 },
-      { customerId: insertedCustomers[7].id, ruleId: earnRuleId, rewardId: null, type: "earn" as const, points: 9, description: "Espresso to go", orderAmount: "3.50", itemQuantity: null, daysAgo: 6 },
-      { customerId: insertedCustomers[3].id, ruleId: null, rewardId: giftCardId, type: "redeem" as const, points: -2500, description: "Gift card redemption", orderAmount: null, itemQuantity: null, daysAgo: 6 },
-      { customerId: insertedCustomers[10].id, ruleId: earnRuleId, rewardId: null, type: "earn" as const, points: 12, description: "First visit coffee", orderAmount: "4.50", itemQuantity: null, daysAgo: 7 },
-    ];
+    // Sarah: signup, first purchase, reviews, newsletter
+    await event(insertedCustomers[0].id, "customer_signup", {});
+    await event(
+      insertedCustomers[0].id,
+      "purchase",
+      {
+        orderAmount: 8.0,
+        orderNumber: "URB-1001",
+        items: [item(latte), item(croissant)],
+      },
+      "purchase:URB-1001",
+    );
+    await event(
+      insertedCustomers[0].id,
+      "review",
+      { purchaseId: "seed", productId: latte.id, rating: 5, text: "Best latte in town" },
+      `review:${insertedCustomers[0].id}:${latte.id}`,
+    );
+    await event(
+      insertedCustomers[0].id,
+      "review",
+      { purchaseId: "seed", productId: croissant.id, rating: 4, text: "Buttery and fresh" },
+      `review:${insertedCustomers[0].id}:${croissant.id}`,
+    );
+    await event(insertedCustomers[0].id, "newsletter_signup", {});
 
-    await db.insert(pointTransactions).values(
-      txData.map((t) => ({
-        tenantId: tenant.id,
-        customerId: t.customerId,
-        transactionType: t.type,
-        points: t.points,
-        description: t.description,
-        orderAmount: t.orderAmount,
-        itemQuantity: t.itemQuantity ?? null,
-        ruleId: t.ruleId,
-        rewardId: t.rewardId,
-        metadata: {},
-        createdAt: new Date(now.getTime() - t.daysAgo * 86400000),
-      })),
+    // Sarah refers Maria
+    await event(
+      insertedCustomers[0].id,
+      "referral",
+      { referredCustomerId: insertedCustomers[2].id },
+      `referral:${insertedCustomers[0].id}:${insertedCustomers[2].id}`,
     );
 
-    // --- Buckets: one non-expiring bucket per customer equal to their balance ---
-    await db.insert(customerRuleBalances).values(
-      insertedCustomers.map((c) => ({
-        tenantId: tenant.id,
-        customerId: c.id,
-        ruleId: null,
-        remainingPoints: c.currentBalance,
-        expiresAt: null,
-      })),
+    // James: bulk beans purchase
+    await event(
+      insertedCustomers[1].id,
+      "purchase",
+      {
+        orderAmount: 34.98,
+        orderNumber: "URB-1002",
+        items: [item(beans, 2, "14.99"), item(latte)],
+      },
+      "purchase:URB-1002",
+    );
+
+    // Maria: second purchase
+    await event(
+      insertedCustomers[2].id,
+      "purchase",
+      {
+        orderAmount: 8.5,
+        orderNumber: "URB-1003",
+        items: [item(latte), item(muffin)],
+      },
+      "purchase:URB-1003",
+    );
+
+    // David: high-value catering order
+    await event(
+      insertedCustomers[3].id,
+      "purchase",
+      {
+        orderAmount: 65.0,
+        orderNumber: "URB-1004",
+        items: [item(avocado, 3, "8.5"), item(burrito, 4, "9.0")],
+      },
+      "purchase:URB-1004",
+    );
+
+    // Emily: newsletter + social share
+    await event(insertedCustomers[4].id, "newsletter_signup", {});
+    await event(insertedCustomers[4].id, "social_share", { platform: "instagram" });
+
+    // Robert: small purchase
+    await event(
+      insertedCustomers[5].id,
+      "purchase",
+      {
+        orderAmount: 12.5,
+        orderNumber: "URB-1005",
+        items: [item(coldBrew), item(croissant, 2)],
+      },
+      "purchase:URB-1005",
+    );
+
+    // Lisa: coffee beans + mug
+    await event(
+      insertedCustomers[6].id,
+      "purchase",
+      {
+        orderAmount: 26.99,
+        orderNumber: "URB-1006",
+        items: [item(beans), item(mug)],
+      },
+      "purchase:URB-1006",
+    );
+
+    // --- Opening balances ---
+    await Promise.all([
+      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[0].id, points: 400, description: "Opening balance" }),
+      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[1].id, points: 250, description: "Opening balance" }),
+      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[3].id, points: 1000, description: "Opening balance" }),
+      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[6].id, points: 500, description: "Opening balance" }),
+    ]);
+
+    // --- Redeem a few rewards ---
+    const [freeBeverage, merch] = rewards;
+    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[0].id, rewardId: freeBeverage.id, description: "Free beverage redemption" });
+    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[1].id, rewardId: rewards[3].id, description: "10% off discount redemption" });
+    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[3].id, rewardId: merch.id, description: "Merchandise redemption" });
+
+    // Idempotency sanity
+    const replay = await event(
+      insertedCustomers[0].id,
+      "purchase",
+      {
+        orderAmount: 8.0,
+        orderNumber: "URB-1001",
+        items: [item(latte), item(croissant)],
+      },
+      "purchase:URB-1001",
     );
 
     return NextResponse.json(
@@ -288,6 +460,10 @@ export async function POST() {
         message: "Demo data seeded successfully",
         admin: ADMIN_EMAIL,
         owner: DEMO_EMAIL,
+        portal: PORTAL_EMAIL,
+        portalPassword: PORTAL_PASSWORD,
+        portalSlug: tenant.slug,
+        replayDeduplicated: replay.duplicate,
       },
       { status: 201 },
     );

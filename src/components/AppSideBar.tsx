@@ -8,6 +8,7 @@ import {
   Star,
   Gift,
   Building2,
+  Settings,
 } from "lucide-react";
 import type { IconType } from "@astryxdesign/core/Icon";
 import {
@@ -68,6 +69,12 @@ const ownerNavItems = [
     icon: ArrowLeftRight,
     selectedIcon: fillIcon(ArrowLeftRight),
   },
+  {
+    label: "Settings",
+    href: "/dashboard/settings",
+    icon: Settings,
+    selectedIcon: fillIcon(Settings),
+  },
 ];
 
 const adminNavItems = [
@@ -82,12 +89,6 @@ const adminNavItems = [
     href: "/admin/tenants",
     icon: Building2,
     selectedIcon: fillIcon(Building2),
-  },
-  {
-    label: "Rules",
-    href: "/admin/rules",
-    icon: ShieldCheck,
-    selectedIcon: fillIcon(ShieldCheck),
   },
 ];
 

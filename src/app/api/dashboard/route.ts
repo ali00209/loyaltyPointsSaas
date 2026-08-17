@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
   customers,
+  earningRules,
   pointTransactions,
   redemptionRewards,
-  tenantEarningRules,
 } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
 import { eq, desc, sql } from "drizzle-orm";
@@ -31,10 +31,10 @@ export async function GET() {
 
   const [ruleStats] = await db
     .select({
-      activeCount: sql<number>`count(*) filter (where ${tenantEarningRules.active} = true)::int`,
+      activeCount: sql<number>`count(*) filter (where ${earningRules.active} = true)::int`,
     })
-    .from(tenantEarningRules)
-    .where(eq(tenantEarningRules.tenantId, tenantId));
+    .from(earningRules)
+    .where(eq(earningRules.tenantId, tenantId));
 
   const [txStats] = await db
     .select({

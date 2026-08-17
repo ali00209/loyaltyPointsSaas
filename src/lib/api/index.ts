@@ -1,6 +1,9 @@
 export { API_BASE_URL, ApiError, client } from "./client";
 export * from "./auth";
 export * from "./customers";
+export * from "./events";
+export * from "./customer";
+export * from "./settings";
 export * from "./products";
 export * from "./rules";
 export * from "./rewards";

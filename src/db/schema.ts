@@ -1,25 +1,20 @@
+import { sql } from "drizzle-orm";
 import {
+  boolean,
+  integer,
+  jsonb,
+  numeric,
+  pgEnum,
   pgTable,
   text,
   timestamp,
-  integer,
-  numeric,
-  boolean,
+  uniqueIndex,
   uuid,
-  pgEnum,
-  jsonb,
 } from "drizzle-orm/pg-core";
 
-import type { RuleConditions, PointsFormula } from "@/lib/rules";
+import type { RuleGroupType } from "react-querybuilder";
 
 export const roleEnum = pgEnum("user_role", ["admin", "owner"]);
-
-export const triggerTypeEnum = pgEnum("trigger_type", [
-  "per_product",
-  "price_range",
-  "bulk_quantity",
-  "flat_rate",
-]);
 
 export const transactionTypeEnum = pgEnum("transaction_type", [
   "earn",
@@ -35,16 +30,29 @@ export const rewardTypeEnum = pgEnum("reward_type", [
   "store_credit",
 ]);
 
+export const eventTypeEnum = pgEnum("event_type", [
+  "purchase",
+  "review",
+  "referral",
+  "newsletter_signup",
+  "social_share",
+  "customer_signup",
+]);
+
 export interface BrandingConfig {
   logoUrl?: string | null;
   brandColor?: string | null;
 }
 
-// Tenants (businesses on the platform)
+// Tenants (businesses on the platform). slug powers the public portal /p/{slug}.
 export const tenants = pgTable("tenants", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
-  brandingConfig: jsonb("branding_config").$type<BrandingConfig>().notNull().default({}),
+  slug: text("slug").notNull().unique(),
+  brandingConfig: jsonb("branding_config")
+    .$type<BrandingConfig>()
+    .notNull()
+    .default({}),
   suspended: boolean("suspended").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -57,26 +65,44 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash").notNull(),
   role: roleEnum("role").notNull().default("owner"),
-  tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  tenantId: uuid("tenant_id").references(() => tenants.id, {
+    onDelete: "cascade",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Customer catalog (tenant-scoped)
-export const customers = pgTable("customers", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  tenantId: uuid("tenant_id")
-    .notNull()
-    .references(() => tenants.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  email: text("email"),
-  phone: text("phone"),
-  totalPointsEarned: integer("total_points_earned").notNull().default(0),
-  currentBalance: integer("current_balance").notNull().default(0),
-  joinDate: timestamp("join_date").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+// Customer catalog (tenant-scoped). Email is the portal login handle and is
+// unique per tenant. referralCode powers /p/{slug}?ref=CODE attribution.
+export const customers = pgTable(
+  "customers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    passwordHash: text("password_hash"),
+    referralCode: text("referral_code"),
+    isActive: boolean("is_active").notNull().default(true),
+    totalPointsEarned: integer("total_points_earned").notNull().default(0),
+    currentBalance: integer("current_balance").notNull().default(0),
+    joinDate: timestamp("join_date").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("customers_email_tenant_idx")
+      .on(table.email, table.tenantId)
+      .where(sql`${table.email} is not null`),
+    uniqueIndex("customers_referral_code_tenant_idx")
+      .on(table.referralCode, table.tenantId)
+      .where(sql`${table.referralCode} is not null`),
+  ],
+);
 
-// Optional catalog used by per_product rules (tenant-scoped)
+// Optional catalog products; joins give purchase/review rules their derived
+// facts (productPrice, productCategory).
 export const products = pgTable("products", {
   id: uuid("id").defaultRandom().primaryKey(),
   tenantId: uuid("tenant_id")
@@ -90,14 +116,28 @@ export const products = pgTable("products", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Earning rules are authored by platform admins and assigned to tenants.
+// Earning rules are authored by the tenant owner from the owner dashboard.
+// Each rule belongs to exactly one tenant.
 export const earningRules = pgTable("earning_rules", {
   id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
-  triggerType: triggerTypeEnum("trigger_type").notNull(),
-  conditions: jsonb("conditions").$type<RuleConditions>().notNull().default({}),
-  pointsFormula: jsonb("points_formula").$type<PointsFormula>().notNull(),
+  eventType: eventTypeEnum("event_type").notNull(),
+  perItem: boolean("per_item").notNull().default(false),
+  conditions: jsonb("conditions")
+    .$type<RuleGroupType>()
+    .notNull()
+    .default({ combinator: "and", rules: [] }),
+  formulaType: text("formula_type").notNull().default("rate"),
+  formulaBasis: text("formula_basis"),
+  formulaRate: numeric("formula_rate", { precision: 12, scale: 4 }).notNull().default("1"),
+  formulaFlatAmount: integer("formula_flat_amount"),
+  formulaRounding: text("formula_rounding").notNull().default("floor"),
+  formulaMinPoints: integer("formula_min_points"),
+  formulaMaxPoints: integer("formula_max_points"),
   pointsExpireAfterDays: integer("points_expire_after_days"),
   active: boolean("active").notNull().default(true),
   activeFrom: timestamp("active_from"),
@@ -106,18 +146,7 @@ export const earningRules = pgTable("earning_rules", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// Which rules a tenant has applied to their program.
-export const tenantEarningRules = pgTable("tenant_earning_rules", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  tenantId: uuid("tenant_id")
-    .notNull()
-    .references(() => tenants.id, { onDelete: "cascade" }),
-  ruleId: uuid("rule_id")
-    .notNull()
-    .references(() => earningRules.id, { onDelete: "cascade" }),
-  active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+
 
 // Rewards are created by the tenant themselves.
 export const redemptionRewards = pgTable("redemption_rewards", {
@@ -130,10 +159,53 @@ export const redemptionRewards = pgTable("redemption_rewards", {
   rewardType: rewardTypeEnum("reward_type").notNull(),
   inventoryLimit: integer("inventory_limit"),
   redeemedCount: integer("redeemed_count").notNull().default(0),
-  details: jsonb("details").$type<Record<string, unknown>>().notNull().default({}),
+  details: jsonb("details")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Ingested point-earning events. eventKey is unique per tenant when present
+// (null for repeatable events), giving idempotency / dedupe.
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    eventType: eventTypeEnum("event_type").notNull(),
+    eventKey: text("event_key"),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("events_key_tenant_idx")
+      .on(table.eventKey, table.tenantId)
+      .where(sql`${table.eventKey} is not null`),
+  ],
+);
+
+// POS / API access: one hashed key per tenant, owner-managed and rotatable.
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default("Default"),
+  keyHash: text("key_hash").notNull().unique(),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Ledger of point activity (earn / redeem / adjust / expire).
@@ -149,12 +221,20 @@ export const pointTransactions = pgTable("point_transactions", {
   points: integer("points").notNull(),
   orderAmount: numeric("order_amount", { precision: 12, scale: 2 }),
   itemQuantity: integer("item_quantity"),
-  ruleId: uuid("rule_id").references(() => earningRules.id, { onDelete: "set null" }),
+  ruleId: uuid("rule_id").references(() => earningRules.id, {
+    onDelete: "set null",
+  }),
   rewardId: uuid("reward_id").references(() => redemptionRewards.id, {
     onDelete: "set null",
   }),
+  eventId: uuid("event_id").references(() => events.id, {
+    onDelete: "set null",
+  }),
   description: text("description"),
-  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  metadata: jsonb("metadata")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

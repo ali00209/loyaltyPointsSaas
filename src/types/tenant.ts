@@ -6,6 +6,7 @@ export interface BrandingConfig {
 export interface AdminTenant extends Record<string, unknown> {
   id: string;
   name: string;
+  slug: string;
   brandingConfig: BrandingConfig;
   suspended: boolean;
   ownerName: string | null;
@@ -15,15 +16,17 @@ export interface AdminTenant extends Record<string, unknown> {
   createdAt: string;
 }
 
+export interface AssignedRuleSummary {
+  id: string;
+  name: string;
+  eventType: string;
+  perItem: boolean;
+  active: boolean;
+  formulaText: string;
+}
+
 export interface AdminTenantDetail extends AdminTenant {
-  assignedRules: Array<{
-    assignmentId: string;
-    assignmentActive: boolean;
-    id: string;
-    name: string;
-    triggerType: string;
-    pointsPerUnit: number;
-  }>;
+  assignedRules: AssignedRuleSummary[];
 }
 
 export interface CreateTenantInput {

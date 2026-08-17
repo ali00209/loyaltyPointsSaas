@@ -1,9 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { customers, earningRules, pointTransactions, redemptionRewards } from "@/db/schema";
+import {
+  customers,
+  earningRules,
+  pointTransactions,
+  redemptionRewards,
+} from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
-import { applyAdjust, applyEarn, applyRedeem, PointsError } from "@/lib/points";
-import { eq, and, desc } from "drizzle-orm";
+import { applyAdjust, applyRedeem, PointsError } from "@/lib/points";
+import { CreateTransactionSchema, parseBody } from "@/lib/validations";
+import { and, desc, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET() {
   const guard = await requireOwnerTenant();
@@ -22,6 +28,7 @@ export async function GET() {
       ruleName: earningRules.name,
       rewardId: pointTransactions.rewardId,
       rewardName: redemptionRewards.name,
+      eventId: pointTransactions.eventId,
       description: pointTransactions.description,
       orderAmount: pointTransactions.orderAmount,
       itemQuantity: pointTransactions.itemQuantity,
@@ -31,7 +38,10 @@ export async function GET() {
     .from(pointTransactions)
     .leftJoin(customers, eq(pointTransactions.customerId, customers.id))
     .leftJoin(earningRules, eq(pointTransactions.ruleId, earningRules.id))
-    .leftJoin(redemptionRewards, eq(pointTransactions.rewardId, redemptionRewards.id))
+    .leftJoin(
+      redemptionRewards,
+      eq(pointTransactions.rewardId, redemptionRewards.id),
+    )
     .where(eq(pointTransactions.tenantId, tenantId))
     .orderBy(desc(pointTransactions.createdAt))
     .limit(200);
@@ -44,14 +54,10 @@ export async function POST(req: NextRequest) {
   if ("error" in guard) return guard.error;
   const tenantId = guard.tenantId;
 
-  const body = await req.json();
-  const { customerId, transactionType, ruleId, rewardId, points, description, orderAmount, itemQuantity, productId, metadata } = body;
+  const parsed = await parseBody(req, CreateTransactionSchema);
+  if (parsed.error) return parsed.error;
+  const { customerId, transactionType, rewardId, points, description, metadata } = parsed.data;
 
-  if (!customerId || !transactionType) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-  }
-
-  // Confirm the customer belongs to this tenant.
   const [customer] = await db
     .select()
     .from(customers)
@@ -64,45 +70,36 @@ export async function POST(req: NextRequest) {
 
   try {
     switch (transactionType) {
-      case "earn": {
-        if (!ruleId) {
+      case "redeem": {
+        if (!rewardId) {
           return NextResponse.json(
-            { error: "Earning requires a rule — use Adjust for manual point changes" },
+            { error: "Redemption requires a reward" },
             { status: 400 },
           );
         }
         return NextResponse.json(
-          await applyEarn({
+          await applyRedeem({
             tenantId,
             customerId,
-            ruleId,
-            orderAmount,
-            itemQuantity,
-            productId,
+            rewardId,
             description,
             metadata,
           }),
           { status: 201 },
         );
       }
-      case "redeem": {
-        if (!rewardId) {
-          return NextResponse.json({ error: "Redemption requires a reward" }, { status: 400 });
-        }
-        return NextResponse.json(
-          await applyRedeem({ tenantId, customerId, rewardId, description, metadata }),
-          { status: 201 },
-        );
-      }
       case "adjust": {
-        if (!points || Number(points) === 0) {
-          return NextResponse.json({ error: "Adjustment needs a non-zero point amount" }, { status: 400 });
+        if (!points || points === 0) {
+          return NextResponse.json(
+            { error: "Adjustment needs a non-zero point amount" },
+            { status: 400 },
+          );
         }
         return NextResponse.json(
           await applyAdjust({
             tenantId,
             customerId,
-            points: Number(points),
+            points,
             description,
             metadata,
           }),
@@ -110,13 +107,22 @@ export async function POST(req: NextRequest) {
         );
       }
       default:
-        return NextResponse.json({ error: "Invalid transaction type" }, { status: 400 });
+        return NextResponse.json(
+          {
+            error:
+              "Invalid transaction type. Use the Record Event action to award points",
+          },
+          { status: 400 },
+        );
     }
   } catch (err) {
     if (err instanceof PointsError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     console.error("Transaction error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

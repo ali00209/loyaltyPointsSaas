@@ -5,8 +5,6 @@ import type {
   AdminTenantDetail,
   CreateTenantInput,
   Customer,
-  EarningRule,
-  EarningRuleInput,
   Transaction,
   UpdateTenantInput,
 } from "@/types";
@@ -51,43 +49,4 @@ export async function fetchAdminTenantTransactions(id: string): Promise<Transact
     `/admin/tenants/${id}/transactions`,
   );
   return data.transactions;
-}
-
-export async function fetchAdminRules(): Promise<EarningRule[]> {
-  const { data } = await client.get<{ rules: EarningRule[] }>("/admin/rules");
-  return data.rules;
-}
-
-export async function createAdminRule(input: EarningRuleInput): Promise<EarningRule> {
-  const { data } = await client.post<{ rule: EarningRule }>("/admin/rules", input);
-  return data.rule;
-}
-
-export async function updateAdminRule(
-  id: string,
-  input: Partial<EarningRuleInput>,
-): Promise<EarningRule> {
-  const { data } = await client.put<{ rule: EarningRule }>(`/admin/rules/${id}`, input);
-  return data.rule;
-}
-
-export async function deleteAdminRule(id: string): Promise<void> {
-  await client.delete(`/admin/rules/${id}`);
-}
-
-export async function assignRule(
-  ruleId: string,
-  tenantId: string,
-): Promise<{ id: string; tenantId: string; ruleId: string; active: boolean }> {
-  const { data } = await client.post<{ assignment: { id: string; tenantId: string; ruleId: string; active: boolean } }>(
-    `/admin/rules/${ruleId}/assignments`,
-    { tenantId },
-  );
-  return data.assignment;
-}
-
-export async function unassignRule(ruleId: string, tenantId: string): Promise<void> {
-  await client.delete(`/admin/rules/${ruleId}/assignments`, {
-    params: { tenantId },
-  });
 }

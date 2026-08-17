@@ -195,24 +195,6 @@ export default function HomePage() {
 
             <Divider label="or" />
 
-            <VStack gap={2} hAlign="stretch">
-              <Button
-                label="Try Demo (Pre-loaded Data)"
-                variant="secondary"
-                size="lg"
-                width="100%"
-                isLoading={seeding}
-                isDisabled={loading}
-                onClick={handleSeedAndLogin}
-              />
-              <Text type="supporting" color="secondary" justify="center">
-                Owner: demo@loyaltyapp.com / demo123
-              </Text>
-              <Text type="supporting" color="secondary" justify="center">
-                Admin: admin@loyaltyapp.com / admin123
-              </Text>
-            </VStack>
-
             <VStack hAlign="center">
               <Text type="supporting" color="secondary">
                 {mode === "login"

@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { customers, redemptionRewards, tenants, users } from "@/db/schema";
 import { requireAdminUser } from "@/lib/api-guard";
 import { createToken, hashPassword } from "@/lib/auth";
+import { slugify } from "@/lib/slug";
+import { CreateTenantSchema, parseBody } from "@/lib/validations";
 import { eq, and, desc, sql } from "drizzle-orm";
 
 export async function GET() {
@@ -31,6 +33,7 @@ export async function GET() {
     .select({
       id: tenants.id,
       name: tenants.name,
+      slug: tenants.slug,
       brandingConfig: tenants.brandingConfig,
       suspended: tenants.suspended,
       createdAt: tenants.createdAt,
@@ -52,12 +55,9 @@ export async function POST(req: NextRequest) {
   const guard = await requireAdminUser();
   if ("error" in guard) return guard.error;
 
-  const body = await req.json();
-  const { name, ownerName, ownerEmail, ownerPassword, brandingConfig } = body;
-
-  if (!name || !ownerName || !ownerEmail || !ownerPassword) {
-    return NextResponse.json({ error: "Tenant name and owner details are required" }, { status: 400 });
-  }
+  const parsed = await parseBody(req, CreateTenantSchema);
+  if (parsed.error) return parsed.error;
+  const { name, ownerName, ownerEmail, ownerPassword, brandingConfig, slug } = parsed.data;
 
   const existing = await db.select().from(users).where(eq(users.email, ownerEmail)).limit(1);
   if (existing.length > 0) {
@@ -69,7 +69,11 @@ export async function POST(req: NextRequest) {
   const tenant = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(tenants)
-      .values({ name, brandingConfig: brandingConfig || {} })
+      .values({
+        name,
+        slug: slug ?? slugify(name),
+        brandingConfig: brandingConfig || {},
+      })
       .returning();
     const [owner] = await tx
       .insert(users)
@@ -89,6 +93,7 @@ export async function POST(req: NextRequest) {
       tenant: {
         id: tenant.id,
         name: tenant.name,
+        slug: tenant.slug,
         brandingConfig: tenant.brandingConfig,
         suspended: tenant.suspended,
         createdAt: tenant.createdAt,

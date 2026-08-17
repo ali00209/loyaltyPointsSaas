@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tenants, users } from "@/db/schema";
 import { createToken, verifyPassword } from "@/lib/auth";
+import { LoginSchema, parseBody } from "@/lib/validations";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
-
-    if (!email || !password) {
-      return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
-    }
+    const parsed = await parseBody(req, LoginSchema);
+    if (parsed.error) return parsed.error;
+    const { email, password } = parsed.data;
 
     const [user] = await db
       .select()

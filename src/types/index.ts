@@ -1,5 +1,7 @@
 export * from "./auth";
 export * from "./customer";
+export * from "./event";
+export * from "./portal";
 export * from "./product";
 export * from "./rule";
 export * from "./reward";

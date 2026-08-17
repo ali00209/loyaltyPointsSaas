@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Minus, ArrowLeftRight, Gift } from "lucide-react";
+import { Plus, Minus, ArrowLeftRight, Gift, Zap } from "lucide-react";
 import { VStack, HStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -13,7 +13,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import { Banner } from "@astryxdesign/core/Banner";
-import { Table, pixel, proportional } from "@astryxdesign/core/Table";
+import { Table, proportional } from "@astryxdesign/core/Table";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { useToast } from "@astryxdesign/core/Toast";
@@ -22,11 +22,28 @@ import AppHeader from "@/components/AppHeader";
 import {
   useTransactions,
   useCustomers,
-  useRules,
   useRewards,
+  useProducts,
   useCreateTransaction,
+  usePostEvent,
 } from "@/lib/query";
-import type { Transaction, TransactionInput, TransactionType } from "@/types";
+import {
+  EVENT_CATALOG,
+  eventLabel,
+  EVENT_TYPES,
+  type EventType,
+} from "@/lib/rules";
+import type {
+  Customer,
+  PostEventInput,
+  Transaction,
+  TransactionInput,
+  TransactionType,
+} from "@/types";
+
+const OWNER_POSTABLE_EVENTS = EVENT_TYPES.filter(
+  (e) => e !== "referral" && e !== "customer_signup",
+);
 
 const txTypeBadge: Record<string, "green" | "red" | "blue" | "neutral"> = {
   earn: "green",
@@ -45,72 +62,108 @@ const txTypeLabels: Record<string, string> = {
 const TX_FILTERS = ["all", "earn", "redeem", "adjust"];
 
 const TXN_TYPES = [
-  { value: "earn", label: "Earn — Award Points" },
   { value: "redeem", label: "Redeem — Use Points" },
   { value: "adjust", label: "Adjust — Manual Correction" },
 ];
 
-interface TransactionForm {
+interface LedgerForm {
   customerId: string;
   transactionType: string;
-  ruleId: string;
   rewardId: string;
   points: number | null;
   description: string;
-  orderAmount: number | null;
-  itemQuantity: number | null;
 }
 
-const defaultForm: TransactionForm = {
+interface LineItem {
+  productId: string;
+  quantity: number | null;
+  unitPrice: number | null;
+}
+
+interface EventForm {
+  customerId: string;
+  eventType: EventType;
+  orderAmount: number | null;
+  orderNumber: string;
+  items: LineItem[];
+  purchaseId: string;
+  productId: string;
+  rating: number | null;
+  platform: string;
+}
+
+const defaultLedgerForm: LedgerForm = {
   customerId: "",
-  transactionType: "earn",
-  ruleId: "",
+  transactionType: "redeem",
   rewardId: "",
   points: null,
   description: "",
+};
+
+const defaultEventForm: EventForm = {
+  customerId: "",
+  eventType: "purchase",
   orderAmount: null,
-  itemQuantity: null,
+  orderNumber: "",
+  items: [{ productId: "", quantity: null, unitPrice: null }],
+  purchaseId: "",
+  productId: "",
+  rating: null,
+  platform: "",
 };
 
 export default function TransactionsPage() {
   const { data: transactions = [], isLoading } = useTransactions();
   const { data: customers = [] } = useCustomers();
-  const { data: rules = [] } = useRules();
   const { data: rewards = [] } = useRewards();
+  const { data: products = [] } = useProducts();
   const createTransactionMutation = useCreateTransaction();
-  const [showForm, setShowForm] = useState(false);
+  const postEventMutation = usePostEvent();
+  const [showLedger, setShowLedger] = useState(false);
+  const [showEvent, setShowEvent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filterType, setFilterType] = useState("all");
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState<TransactionForm>(defaultForm);
+  const [ledger, setLedger] = useState<LedgerForm>(defaultLedgerForm);
+  const [eventForm, setEventForm] = useState<EventForm>(defaultEventForm);
   const showToast = useToast();
 
-  const openCreate = (type: string) => {
-    setForm({ ...defaultForm, transactionType: type });
-    setShowForm(true);
+  const openLedger = (type: string) => {
+    setLedger({ ...defaultLedgerForm, transactionType: type });
+    setShowLedger(true);
   };
 
-  const selectedReward = rewards.find((r) => r.id === form.rewardId);
+  const openEvent = () => {
+    setEventForm(defaultEventForm);
+    setShowEvent(true);
+  };
 
-  const handleSave = async () => {
+  const selectedReward = rewards.find((r) => r.id === ledger.rewardId);
+  const eventEntry = EVENT_CATALOG[eventForm.eventType];
+
+  const updateItem = (index: number, patch: Partial<LineItem>) => {
+    setEventForm((f) => ({
+      ...f,
+      items: f.items.map((it, i) => (i === index ? { ...it, ...patch } : it)),
+    }));
+  };
+
+  const handleLedgerSave = async () => {
     setSaving(true);
     try {
       const payload: TransactionInput = {
-        customerId: form.customerId,
-        transactionType: form.transactionType as TransactionType,
-        ruleId: form.ruleId || null,
-        rewardId: form.rewardId || null,
+        customerId: ledger.customerId,
+        transactionType: ledger.transactionType as TransactionType,
+        rewardId: ledger.rewardId || null,
         points:
-          form.transactionType === "adjust" ? (form.points ?? 0) : undefined,
-        description: form.description || null,
-        orderAmount: form.orderAmount != null ? String(form.orderAmount) : null,
-        itemQuantity: form.itemQuantity ?? null,
+          ledger.transactionType === "adjust"
+            ? (ledger.points ?? 0)
+            : undefined,
+        description: ledger.description || null,
       };
-
       await createTransactionMutation.mutateAsync(payload);
-
       showToast({ type: "info", body: "Transaction recorded" });
-      setShowForm(false);
+      setShowLedger(false);
     } catch (err) {
       showToast({
         type: "error",
@@ -122,20 +175,113 @@ export default function TransactionsPage() {
     }
   };
 
+  const buildPayload = (): Record<string, unknown> => {
+    const f = eventForm;
+    switch (f.eventType) {
+      case "purchase":
+        return {
+          orderAmount: f.orderAmount,
+          ...(f.orderNumber ? { orderNumber: f.orderNumber } : {}),
+          items: f.items
+            .filter(
+              (it) =>
+                it.productId && it.quantity != null && it.unitPrice != null,
+            )
+            .map((it) => ({
+              productId: it.productId,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+            })),
+        };
+      case "review":
+        return {
+          purchaseId: f.purchaseId,
+          productId: f.productId,
+          rating: f.rating,
+        };
+      case "social_share":
+        return f.platform ? { platform: f.platform } : {};
+      default:
+        return {};
+    }
+  };
+
+  const handleEventSave = async () => {
+    setSaving(true);
+    try {
+      const input: PostEventInput = {
+        eventType: eventForm.eventType,
+        payload: buildPayload(),
+        customerId: eventForm.customerId,
+      };
+      const result = await postEventMutation.mutateAsync(input);
+      if (result.duplicate) {
+        showToast({
+          type: "info",
+          body: "Already recorded — no points awarded",
+        });
+      } else if (result.awards.length > 0) {
+        showToast({
+          type: "info",
+          body: `Awarded +${result.totalAwarded} pts (${result.awards.map((a) => a.ruleName).join(", ")})`,
+        });
+      } else {
+        showToast({ type: "info", body: "No matching rules — 0 pts awarded" });
+      }
+      setShowEvent(false);
+    } catch (err) {
+      showToast({
+        type: "error",
+        body: err instanceof Error ? err.message : "Failed to record event",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const eventCanSave = (): boolean => {
+    const f = eventForm;
+    if (!f.customerId) return false;
+    switch (f.eventType) {
+      case "purchase":
+        return (
+          f.orderAmount != null &&
+          f.items.some(
+            (it) => it.productId && it.quantity != null && it.unitPrice != null,
+          )
+        );
+      case "review":
+        return Boolean(
+          f.purchaseId &&
+          f.productId &&
+          f.rating != null &&
+          f.rating >= 1 &&
+          f.rating <= 5,
+        );
+      default:
+        return true;
+    }
+  };
+
   const filtered = transactions.filter((t) => {
     const matchType = filterType === "all" || t.transactionType === filterType;
+    const source =
+      t.ruleName ??
+      (typeof t.metadata?.eventType === "string"
+        ? eventLabel(t.metadata.eventType)
+        : "") ??
+      t.rewardName ??
+      "";
     const matchSearch =
       (t.customerName || "").toLowerCase().includes(search.toLowerCase()) ||
       (t.description || "").toLowerCase().includes(search.toLowerCase()) ||
-      (t.ruleName || "").toLowerCase().includes(search.toLowerCase()) ||
-      (t.rewardName || "").toLowerCase().includes(search.toLowerCase());
+      source.toLowerCase().includes(search.toLowerCase());
     return matchType && matchSearch;
   });
 
-  const canSave =
-    Boolean(form.customerId) &&
-    (form.transactionType !== "earn" || Boolean(form.ruleId)) &&
-    (form.transactionType !== "redeem" || Boolean(form.rewardId));
+  const canSaveLedger =
+    Boolean(ledger.customerId) &&
+    (ledger.transactionType !== "redeem" || Boolean(ledger.rewardId));
 
   if (isLoading) {
     return <AppLoading label="Loading transactions..." />;
@@ -145,9 +291,9 @@ export default function TransactionsPage() {
     <VStack gap={6} hAlign="stretch">
       <AppHeader
         heading="Transactions"
-        description="Record and track all point activity"
+        description="Points activity, redemptions, and event-driven awards"
         showButton={false}
-        onClick={() => openCreate("redeem")}
+        onClick={() => openLedger("redeem")}
         search={search}
         setSearch={setSearch}
         showFilter={true}
@@ -160,22 +306,28 @@ export default function TransactionsPage() {
               label="Adjust"
               variant="ghost"
               icon={<Plus size="1em" />}
-              onClick={() => openCreate("adjust")}
+              onClick={() => openLedger("adjust")}
             />
             <Button
               label="Redeem Points"
               variant="secondary"
               icon={<Minus size="1em" />}
-              onClick={() => openCreate("redeem")}
+              onClick={() => openLedger("redeem")}
             />
             <Button
-              label="Award Points"
+              label="Record Event"
               variant="primary"
-              icon={<Plus size="1em" />}
-              onClick={() => openCreate("earn")}
+              icon={<Zap size="1em" />}
+              onClick={openEvent}
             />
           </HStack>
         }
+      />
+
+      <Banner
+        status="info"
+        title="Points are earned through events, not manual awards. Record a purchase, review, or engagement event and the platform awards points for every matching rule."
+        container="card"
       />
 
       {filtered.length === 0 ? (
@@ -185,15 +337,15 @@ export default function TransactionsPage() {
             description={
               search || filterType !== "all"
                 ? "Try different filters"
-                : "Record your first point transaction"
+                : "Record an event to start earning points"
             }
             icon={<Icon icon={ArrowLeftRight} size="lg" />}
             actions={
               !search && filterType === "all" ? (
                 <Button
-                  label="Record Your First Transaction"
+                  label="Record Your First Event"
                   variant="primary"
-                  onClick={() => openCreate("earn")}
+                  onClick={openEvent}
                 />
               ) : undefined
             }
@@ -239,6 +391,15 @@ export default function TransactionsPage() {
                     </Text>
                     <Text type="supporting" color="secondary">
                       Rule
+                    </Text>
+                  </VStack>
+                ) : typeof t.metadata?.eventType === "string" ? (
+                  <VStack gap={0} hAlign="stretch">
+                    <Text type="body" color="secondary" maxLines={1}>
+                      {eventLabel(t.metadata.eventType)}
+                    </Text>
+                    <Text type="supporting" color="secondary">
+                      Event
                     </Text>
                   </VStack>
                 ) : t.rewardName ? (
@@ -305,21 +466,20 @@ export default function TransactionsPage() {
         />
       )}
 
+      {/* Redeem / Adjust */}
       <Dialog
-        isOpen={showForm}
-        onOpenChange={setShowForm}
+        isOpen={showLedger}
+        onOpenChange={setShowLedger}
         purpose="form"
         width={520}
       >
         <DialogHeader
           title={
-            form.transactionType === "earn"
-              ? "Award Points"
-              : form.transactionType === "redeem"
-                ? "Redeem Points"
-                : "Adjust Points"
+            ledger.transactionType === "redeem"
+              ? "Redeem Points"
+              : "Adjust Points"
           }
-          onOpenChange={setShowForm}
+          onOpenChange={setShowLedger}
         />
         <VStack gap={3} hAlign="stretch">
           <Selector
@@ -330,59 +490,16 @@ export default function TransactionsPage() {
               value: c.id,
               label: `${c.name} (${c.currentBalance.toLocaleString()} pts)`,
             }))}
-            value={form.customerId}
-            onChange={(v) => setForm({ ...form, customerId: v })}
+            value={ledger.customerId}
+            onChange={(v) => setLedger({ ...ledger, customerId: v })}
           />
           <Selector
             label="Transaction Type"
             options={TXN_TYPES}
-            value={form.transactionType}
-            onChange={(v) => setForm({ ...form, transactionType: v })}
+            value={ledger.transactionType}
+            onChange={(v) => setLedger({ ...ledger, transactionType: v })}
           />
-
-          {form.transactionType === "earn" && (
-            <>
-              <Selector
-                label="Earning Rule"
-                placeholder="Select a rule"
-                isRequired
-                options={rules
-                  .filter((r) => r.assignmentActive)
-                  .map((r) => ({
-                    value: r.id,
-                    label: r.name,
-                  }))}
-                value={form.ruleId}
-                onChange={(v) => setForm({ ...form, ruleId: v })}
-              />
-              <HStack gap={3}>
-                <NumberInput
-                  label="Order Amount ($)"
-                  placeholder="e.g. 25.50"
-                  min={0}
-                  step={0.01}
-                  isOptional
-                  hasClear
-                  width="100%"
-                  value={form.orderAmount}
-                  onChange={(v) => setForm({ ...form, orderAmount: v })}
-                />
-                <NumberInput
-                  label="Item Quantity"
-                  placeholder="e.g. 3"
-                  min={0}
-                  isIntegerOnly
-                  isOptional
-                  hasClear
-                  width="100%"
-                  value={form.itemQuantity}
-                  onChange={(v) => setForm({ ...form, itemQuantity: v })}
-                />
-              </HStack>
-            </>
-          )}
-
-          {form.transactionType === "redeem" && (
+          {ledger.transactionType === "redeem" && (
             <Selector
               label="Reward"
               placeholder="Select a reward"
@@ -393,39 +510,28 @@ export default function TransactionsPage() {
                   value: r.id,
                   label: `${r.name} (${r.pointsCost.toLocaleString()} pts)`,
                 }))}
-              value={form.rewardId}
-              onChange={(v) => setForm({ ...form, rewardId: v })}
+              value={ledger.rewardId}
+              onChange={(v) => setLedger({ ...ledger, rewardId: v })}
             />
           )}
-
-          {form.transactionType === "adjust" && (
+          {ledger.transactionType === "adjust" && (
             <NumberInput
               label="Points Adjustment (signed)"
               placeholder="e.g. 50 or -50"
               isRequired
               hasClear
-              value={form.points}
-              onChange={(v) => setForm({ ...form, points: v })}
+              value={ledger.points}
+              onChange={(v) => setLedger({ ...ledger, points: v })}
             />
           )}
-
           <TextInput
             label="Description"
-            placeholder="e.g. Morning coffee purchase"
+            placeholder="e.g. Refund correction"
             isOptional
-            value={form.description}
-            onChange={(v) => setForm({ ...form, description: v })}
+            value={ledger.description}
+            onChange={(v) => setLedger({ ...ledger, description: v })}
           />
-
-          {form.transactionType === "earn" && form.ruleId && (
-            <Banner
-              status="info"
-              title="Points are calculated automatically from the rule based on the order amount and/or item quantity provided."
-              container="card"
-            />
-          )}
-
-          {form.transactionType === "redeem" && selectedReward && (
+          {ledger.transactionType === "redeem" && selectedReward && (
             <Banner
               status="info"
               title={`This will deduct ${selectedReward.pointsCost.toLocaleString()} points and redeem "${selectedReward.name}".`}
@@ -438,21 +544,228 @@ export default function TransactionsPage() {
           <Button
             label="Cancel"
             variant="secondary"
-            onClick={() => setShowForm(false)}
+            onClick={() => setShowLedger(false)}
             width="100%"
           />
           <Button
             label={
-              form.transactionType === "earn"
-                ? "Award Points"
-                : form.transactionType === "redeem"
-                  ? "Redeem Points"
-                  : "Submit"
+              ledger.transactionType === "redeem" ? "Redeem Points" : "Submit"
             }
             variant="primary"
             isLoading={saving}
-            isDisabled={!canSave}
-            onClick={handleSave}
+            isDisabled={!canSaveLedger}
+            onClick={handleLedgerSave}
+            width="100%"
+          />
+        </HStack>
+      </Dialog>
+
+      {/* Record Event */}
+      <Dialog
+        isOpen={showEvent}
+        onOpenChange={setShowEvent}
+        purpose="form"
+        width={600}
+        maxHeight={"full"}
+      >
+        <DialogHeader title="Record Event" onOpenChange={setShowEvent} />
+        <VStack gap={3} hAlign="stretch">
+          <Selector
+            label="Customer"
+            placeholder="Select a customer"
+            isRequired
+            options={customers.map((c) => ({
+              value: c.id,
+              label: `${c.name} (${c.currentBalance.toLocaleString()} pts)`,
+            }))}
+            value={eventForm.customerId}
+            onChange={(v) => setEventForm({ ...eventForm, customerId: v })}
+          />
+          <Selector
+            label="Event Type"
+            options={OWNER_POSTABLE_EVENTS.map((e) => ({
+              value: e,
+              label: EVENT_CATALOG[e].label,
+            }))}
+            value={eventForm.eventType}
+            onChange={(v) =>
+              setEventForm({ ...eventForm, eventType: v as EventType })
+            }
+          />
+          <Text type="supporting" color="secondary">
+            {eventEntry.description}
+          </Text>
+
+          {eventForm.eventType === "purchase" && (
+            <>
+              <HStack gap={3}>
+                <NumberInput
+                  label="Order Amount"
+                  placeholder="e.g. 25.50"
+                  min={0}
+                  step={0.01}
+                  isRequired
+                  hasClear
+                  width="100%"
+                  value={eventForm.orderAmount}
+                  onChange={(v) =>
+                    setEventForm({ ...eventForm, orderAmount: v })
+                  }
+                />
+                <TextInput
+                  label="Order Number (optional)"
+                  placeholder="e.g. ORD-1042"
+                  isOptional
+                  width="100%"
+                  value={eventForm.orderNumber}
+                  onChange={(v) =>
+                    setEventForm({ ...eventForm, orderNumber: v })
+                  }
+                />
+              </HStack>
+              <Text type="label" weight="medium">
+                Line Items
+              </Text>
+              <VStack gap={2} hAlign="stretch">
+                {eventForm.items.map((it, i) => (
+                  <HStack key={i} gap={2} vAlign="end">
+                    <Selector
+                      label="Product"
+                      placeholder="Select product"
+                      isLabelHidden={i > 0}
+                      isRequired={i === 0}
+                      width="100%"
+                      options={products.map((p) => ({
+                        value: p.id,
+                        label: p.name,
+                      }))}
+                      value={it.productId}
+                      onChange={(v) => updateItem(i, { productId: v })}
+                    />
+                    <NumberInput
+                      label="Qty"
+                      placeholder="Qty"
+                      isLabelHidden={i > 0}
+                      isRequired={i === 0}
+                      min={1}
+                      isIntegerOnly
+                      hasClear
+                      width={90}
+                      value={it.quantity}
+                      onChange={(v) => updateItem(i, { quantity: v })}
+                    />
+                    <NumberInput
+                      label="Unit Price"
+                      placeholder="0.00"
+                      isLabelHidden={i > 0}
+                      isRequired={i === 0}
+                      min={0}
+                      step={0.01}
+                      hasClear
+                      width={110}
+                      value={it.unitPrice}
+                      onChange={(v) => updateItem(i, { unitPrice: v })}
+                    />
+                    <Button
+                      label="X"
+                      variant="ghost"
+                      size="sm"
+                      isDisabled={eventForm.items.length === 1}
+                      onClick={() =>
+                        setEventForm((f) => ({
+                          ...f,
+                          items: f.items.filter((_, idx) => idx !== i),
+                        }))
+                      }
+                    />
+                  </HStack>
+                ))}
+              </VStack>
+              <Button
+                label="Add Line Item"
+                variant="ghost"
+                size="sm"
+                icon={<Plus size="1em" />}
+                onClick={() =>
+                  setEventForm((f) => ({
+                    ...f,
+                    items: [
+                      ...f.items,
+                      { productId: "", quantity: null, unitPrice: null },
+                    ],
+                  }))
+                }
+              />
+            </>
+          )}
+
+          {eventForm.eventType === "review" && (
+            <>
+              <TextInput
+                label="Purchase ID"
+                placeholder="The event id of the purchase to review"
+                isRequired
+                value={eventForm.purchaseId}
+                onChange={(v) => setEventForm({ ...eventForm, purchaseId: v })}
+              />
+              <TextInput
+                label="Product ID"
+                placeholder="The product being reviewed"
+                isRequired
+                value={eventForm.productId}
+                onChange={(v) => setEventForm({ ...eventForm, productId: v })}
+              />
+              <NumberInput
+                label="Rating (1–5)"
+                min={1}
+                max={5}
+                isIntegerOnly
+                isRequired
+                hasClear
+                value={eventForm.rating}
+                onChange={(v) => setEventForm({ ...eventForm, rating: v })}
+              />
+            </>
+          )}
+
+          {eventForm.eventType === "social_share" && (
+            <TextInput
+              label="Platform"
+              placeholder="e.g. instagram"
+              isOptional
+              value={eventForm.platform}
+              onChange={(v) => setEventForm({ ...eventForm, platform: v })}
+            />
+          )}
+
+          {eventForm.eventType === "newsletter_signup" && (
+            <Banner
+              status="info"
+              title="No payload needed. Recording this event awards points for any matching newsletter rule."
+              container="card"
+            />
+          )}
+
+          <Banner
+            status="info"
+            title="Points are calculated automatically: the event is matched against all active assigned rules and each matching rule awards points."
+            container="card"
+            icon={<Icon icon={Zap} size="sm" />}
+          />
+        </VStack>
+        <HStack gap={3} style={{ marginTop: 20 }}>
+          <Button
+            label="Cancel"
+            variant="secondary"
+            onClick={() => setShowEvent(false)}
+            width="100%"
+          />
+          <Button
+            label="Record Event"
+            variant="primary"
+            isLoading={saving}
+            isDisabled={!eventCanSave()}
+            onClick={handleEventSave}
             width="100%"
           />
         </HStack>

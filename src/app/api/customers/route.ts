@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
+import { CreateCustomerSchema, UpdateCustomerSchema, parseBody } from "@/lib/validations";
 import { eq, and, desc } from "drizzle-orm";
 
 export async function GET() {
@@ -23,12 +24,9 @@ export async function POST(req: NextRequest) {
   if ("error" in guard) return guard.error;
   const tenantId = guard.tenantId;
 
-  const body = await req.json();
-  const { name, email, phone } = body;
-
-  if (!name) {
-    return NextResponse.json({ error: "Customer name required" }, { status: 400 });
-  }
+  const parsed = await parseBody(req, CreateCustomerSchema);
+  if (parsed.error) return parsed.error;
+  const { name, email, phone } = parsed.data;
 
   const [customer] = await db
     .insert(customers)
@@ -48,10 +46,9 @@ export async function PUT(req: NextRequest) {
   if ("error" in guard) return guard.error;
   const tenantId = guard.tenantId;
 
-  const body = await req.json();
-  const { id, name, email, phone } = body;
-
-  if (!id) return NextResponse.json({ error: "Customer ID required" }, { status: 400 });
+  const parsed = await parseBody(req, UpdateCustomerSchema);
+  if (parsed.error) return parsed.error;
+  const { id, name, email, phone } = parsed.data;
 
   const setValues: Record<string, unknown> = {};
   if (name !== undefined) setValues.name = name;
