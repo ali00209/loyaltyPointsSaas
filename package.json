@@ -13,6 +13,7 @@
     "@astryxdesign/cli": "^0.3.0",
     "@astryxdesign/core": "^0.3.0",
     "@astryxdesign/theme-butter": "^0.4.3",
+    "@astryxdesign/theme-matcha": "^0.4.3",
     "@astryxdesign/theme-neutral": "^0.3.0",
     "@astryxdesign/theme-y2k": "^0.3.0",
     "@react-querybuilder/rules-engine": "^8.23.0",
@@ -33,7 +34,8 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-querybuilder": "^8.23.0",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",

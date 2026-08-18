@@ -10,7 +10,7 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Icon } from "@astryxdesign/core/Icon";
-import { Badge } from "@astryxdesign/core/Badge";
+import { Badge, BadgeVariant } from "@astryxdesign/core/Badge";
 import { Table, pixel, proportional } from "@astryxdesign/core/Table";
 import { Switch } from "@astryxdesign/core/Switch";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -37,6 +37,17 @@ const CATEGORIES = [
   "Clothing",
   "Other",
 ];
+
+const categoryTypeBadge: Record<string, BadgeVariant> = {
+  General: "blue",
+  Beverages: "yellow",
+  Food: "purple",
+  Bakery: "green",
+  Retail: "cyan",
+  Electronics: "orange",
+  Clothing: "red",
+  Other: "neutral",
+};
 
 export default function ProductsPage() {
   const { data: products = [], isLoading } = useProducts();
@@ -211,7 +222,10 @@ export default function ProductsPage() {
               key: "category",
               header: "Category",
               renderCell: (p: Product) => (
-                <Badge variant="neutral" label={p.category} />
+                <Badge
+                  variant={categoryTypeBadge[p.category]}
+                  label={p.category}
+                />
               ),
             },
             {

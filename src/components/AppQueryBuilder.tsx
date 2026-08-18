@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Button,
   CheckboxInput,
@@ -33,7 +35,11 @@ function BetweenEditor({
         size="sm"
         placeholder="Min"
       />
-      <span style={{ color: "var(--color-text-secondary)", fontSize: "0.75rem" }}>and</span>
+      <span
+        style={{ color: "var(--color-text-secondary)", fontSize: "0.75rem" }}
+      >
+        and
+      </span>
       <TextInput
         label=""
         value={hi}

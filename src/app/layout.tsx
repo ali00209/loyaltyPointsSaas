@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { QueryProvider } from "@/lib/query";
 import "./globals.css";
-import ThemeProvider from "./provider";
+import { ThemeProvider } from "./provider";
 
 export const metadata: Metadata = {
   title: "LoyaltyHub - Smart Loyalty Points Management",

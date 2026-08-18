@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck, Plus, Trash2, ArrowLeft } from "lucide-react";
-import { VStack, HStack } from "@astryxdesign/core/Layout";
+import { VStack, HStack, Stack } from "@astryxdesign/core/Layout";
 import { Text, Heading } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { NumberInput } from "@astryxdesign/core/NumberInput";
@@ -39,6 +39,7 @@ import type {
 } from "react-querybuilder";
 import QueryBuilder from "react-querybuilder";
 import { AppQueryBuilderElements } from "@/components/AppQueryBuilder";
+import { CheckboxInput, proportional, Table } from "@astryxdesign/core";
 
 const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
 const ROUNDING_OPTIONS = [
@@ -618,72 +619,67 @@ export default function RulesPage() {
           />
         </Card>
       ) : (
-        <VStack gap={3} hAlign="stretch">
-          {rules.map((rule) => (
-            <Card key={rule.id} padding={5}>
-              <HStack gap={4} hAlign="between" vAlign="center">
-                <VStack gap={1} hAlign="stretch">
-                  <HStack gap={2} vAlign="center">
-                    <Badge
-                      variant={eventTypeBadgeColor(rule.eventType)}
-                      label={eventLabel(rule.eventType)}
-                    />
-                    <Text type="body" weight="bold">
-                      {rule.name}
-                    </Text>
-                    {rule.perItem && (
-                      <Badge variant="neutral" label="per item" />
-                    )}
-                  </HStack>
-                  {rule.description && (
-                    <Text type="supporting" color="secondary" maxLines={1}>
-                      {rule.description}
-                    </Text>
-                  )}
-                  <Text type="supporting" color="secondary">
-                    {rule.formulaText} · Expiry:{" "}
-                    {rule.pointsExpireAfterDays
-                      ? `${rule.pointsExpireAfterDays}d`
-                      : "never"}
-                  </Text>
-                </VStack>
-                <HStack gap={2} vAlign="center">
-                  <Switch
-                    label={`${rule.name} active`}
-                    isLabelHidden
-                    value={rule.active}
-                    changeAction={async (checked: boolean) => {
-                      try {
-                        await toggleMutation.mutateAsync({
-                          id: rule.id,
-                          active: checked,
-                        });
-                      } catch {
-                        showToast({
-                          type: "error",
-                          body: "Failed to update status",
-                        });
-                      }
-                    }}
-                  />
+        <Table
+          data={rules}
+          columns={[
+            {
+              key: "name",
+              header: "Name",
+            },
+            {
+              key: "description",
+              header: "Description",
+              width: proportional(2),
+            },
+            {
+              key: "pointsExpireAfterDays",
+              header: "Points expire after days",
+              // width: proportional(1),
+              renderCell: (item) => (
+                <Text type="supporting" color="secondary">
+                  {item.formulaText} · Expiry:{" "}
+                  {item.pointsExpireAfterDays
+                    ? `${item.pointsExpireAfterDays}d`
+                    : "never"}
+                </Text>
+              ),
+            },
+            {
+              key: "active",
+              header: "Active",
+              renderCell: (item) => (
+                <Switch
+                  label=""
+                  value={item.active}
+                  onChange={(v) =>
+                    toggleMutation.mutate({ id: item.id, active: v })
+                  }
+                />
+              ),
+            },
+            {
+              key: "actions",
+              header: "Actions",
+              align: "start",
+              renderCell: (item) => (
+                <Stack direction="horizontal" gap={2} hAlign="start">
                   <Button
                     label="Edit"
-                    variant="ghost"
+                    variant="primary"
                     size="sm"
-                    onClick={() => startEdit(rule)}
+                    onClick={() => startEdit(item)}
                   />
                   <Button
                     label="Delete"
-                    variant="ghost"
+                    variant="destructive"
                     size="sm"
-                    icon={<Trash2 size="1em" />}
-                    onClick={() => handleDelete(rule)}
+                    onClick={() => handleDelete(item)}
                   />
-                </HStack>
-              </HStack>
-            </Card>
-          ))}
-        </VStack>
+                </Stack>
+              ),
+            },
+          ]}
+        />
       )}
       {alert.element}
     </VStack>

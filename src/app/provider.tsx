@@ -1,18 +1,15 @@
 "use client";
 
-import { appTheme } from "@/themes/appTheme";
-import { LayerProvider, Theme } from "@astryxdesign/core";
-import { neutralTheme } from "@astryxdesign/theme-neutral";
-import { y2kTheme } from "@astryxdesign/theme-y2k";
+import React from "react";
+import { Theme, LayerProvider } from "@astryxdesign/core";
+import { useThemeStore, themeMap } from "@/lib/store/theme";
 import { butterTheme } from "@astryxdesign/theme-butter";
 
-export default function ThemeProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const { themeName, mode } = useThemeStore();
+
   return (
-    <Theme theme={butterTheme}>
+    <Theme theme={butterTheme} mode={mode}>
       <LayerProvider>{children}</LayerProvider>
     </Theme>
   );

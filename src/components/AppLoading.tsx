@@ -1,3 +1,5 @@
+"use client";
+
 import { Center, Spinner } from "@astryxdesign/core";
 
 export default function AppLoading({ label }: { label: string }) {

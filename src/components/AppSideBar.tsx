@@ -1,3 +1,5 @@
+"use client";
+
 import {
   LayoutDashboard,
   Package,
@@ -111,7 +113,8 @@ export default function AppSideBar() {
 
   const isAdmin = user.role === "admin";
   const navItems = isAdmin ? adminNavItems : ownerNavItems;
-  const brandColor = user.tenant?.brandingConfig?.brandColor as string | undefined;
+  const brandColor = user.tenant?.brandingConfig?.brandColor as
+    string | undefined;
   const logoBackground = brandColor
     ? { backgroundColor: brandColor }
     : undefined;
