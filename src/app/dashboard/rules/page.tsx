@@ -30,7 +30,9 @@ import {
   EVENT_CATALOG,
   eventLabel,
   type EventType,
+  type FormulaGroup,
   type RuleGroupType,
+  type StructuredFormula,
 } from "@/lib/rules";
 import type { EarningRule, EarningRuleInput } from "@/types";
 import type {
@@ -110,21 +112,38 @@ function isRuleGroupEmpty(conditions: RuleGroupType): boolean {
   return conditions.rules.length === 0;
 }
 
+function defaultStructuredFormula(): StructuredFormula {
+  return {
+    type: "rate",
+    basis: "orderAmount",
+    rate: 1,
+    flatAmount: 0,
+    rounding: "floor",
+    minPoints: null,
+    maxPoints: null,
+  };
+}
+
+function defaultFormulaGroup(): FormulaGroupState {
+  return {
+    conditions: { combinator: "and", rules: [] },
+    formulaType: "rate",
+    structured: defaultStructuredFormula(),
+  };
+}
+
+interface FormulaGroupState {
+  conditions: RuleGroupType;
+  formulaType: "rate" | "flat";
+  structured: StructuredFormula;
+}
+
 interface WizardState {
   name: string;
   description: string;
   eventType: EventType;
   perItem: boolean;
-  conditions: RuleGroupType;
-  formulaType: "rate" | "flat";
-  structured: {
-    basis: string;
-    rate: number;
-    flatAmount: number;
-    rounding: string;
-    minPoints: number | null;
-    maxPoints: number | null;
-  };
+  formulaGroups: FormulaGroupState[];
   pointsExpireAfterDays: number | null;
   active: boolean;
 }
@@ -135,63 +154,220 @@ function defaultWizardState(): WizardState {
     description: "",
     eventType: "purchase",
     perItem: false,
-    conditions: { combinator: "and", rules: [] },
-    formulaType: "rate",
-    structured: {
-      basis: "orderAmount",
-      rate: 1,
-      flatAmount: 0,
-      rounding: "floor",
-      minPoints: null,
-      maxPoints: null,
-    },
+    formulaGroups: [defaultFormulaGroup()],
     pointsExpireAfterDays: null,
     active: true,
   };
 }
 
 function stateToInput(s: WizardState): EarningRuleInput {
-  const isFlat = s.formulaType === "flat";
+  const groups: FormulaGroup[] = s.formulaGroups.map((g) => ({
+    conditions: g.conditions,
+    formula: g.formulaType === "flat"
+      ? { ...g.structured, type: "flat" as const, rate: 0 }
+      : { ...g.structured, type: "rate" as const },
+  }));
   return {
     name: s.name,
     description: s.description || null,
     eventType: s.eventType,
     perItem: s.perItem,
-    conditions: isRuleGroupEmpty(s.conditions) ? undefined : s.conditions,
-    structured: {
-      type: s.formulaType,
-      basis: isFlat ? "" : s.structured.basis || "orderAmount",
-      rate: s.formulaType === "rate" ? s.structured.rate : 0,
-      flatAmount: isFlat ? s.structured.flatAmount : 0,
-      rounding: s.structured.rounding as "floor" | "ceil" | "round",
-      minPoints: s.structured.minPoints,
-      maxPoints: s.structured.maxPoints,
-    } as never,
+    formulaGroups: groups,
     pointsExpireAfterDays: s.pointsExpireAfterDays,
     active: s.active,
   };
 }
 
 function stateFromRule(r: EarningRule): WizardState {
-  const isFlat = (r.formulaType ?? "rate") === "flat";
+  const groups: FormulaGroupState[] = (r.formulaGroups && r.formulaGroups.length > 0)
+    ? r.formulaGroups.map((g) => ({
+        conditions: g.conditions,
+        formulaType: g.formula.type,
+        structured: g.formula,
+      }))
+    : [defaultFormulaGroup()];
   return {
     name: r.name,
     description: r.description ?? "",
     eventType: r.eventType,
     perItem: r.perItem,
-    conditions: r.conditions ?? { combinator: "and", rules: [] },
-    formulaType: isFlat ? "flat" : "rate",
-    structured: {
-      basis: r.formulaBasis ?? "orderAmount",
-      rate: Number(r.formulaRate) || 1,
-      flatAmount: r.formulaFlatAmount ?? 0,
-      rounding: r.formulaRounding ?? "floor",
-      minPoints: r.formulaMinPoints,
-      maxPoints: r.formulaMaxPoints,
-    },
+    formulaGroups: groups,
     pointsExpireAfterDays: r.pointsExpireAfterDays,
     active: r.active,
   };
+}
+
+function groupSummaryText(g: FormulaGroupState): string {
+  if (g.formulaType === "flat") {
+    return `${g.structured.flatAmount} pts (flat)`;
+  }
+  return `${g.structured.rate}% of ${g.structured.basis || "?"}`;
+}
+
+function FormulaGroupCard({
+  group,
+  index,
+  total,
+  eventType,
+  perItem,
+  onChange,
+  onRemove,
+  canRemove,
+}: {
+  group: FormulaGroupState;
+  index: number;
+  total: number;
+  eventType: EventType;
+  perItem: boolean;
+  onChange: (index: number, updated: FormulaGroupState) => void;
+  onRemove: (index: number) => void;
+  canRemove: boolean;
+}) {
+  const numericFields = getNumericFields(eventType, perItem);
+  const allFields = getFieldsForEvent(eventType, perItem);
+  const hasNumericFields = numericFields.length > 0;
+  const hasEventFields = hasFields(eventType);
+
+  const updateStructured = (patch: Partial<StructuredFormula>) => {
+    onChange(index, {
+      ...group,
+      structured: { ...group.structured, ...patch },
+    });
+  };
+
+  return (
+    <Card padding={6}>
+      <VStack gap={4} hAlign="stretch">
+        <HStack gap={3} vAlign="center">
+          <Heading level={4}>Formula group {index + 1}</Heading>
+          {canRemove && (
+            <Button
+              label="Remove"
+              variant="ghost"
+              size="sm"
+              icon={<Trash2 size="1em" />}
+              onClick={() => onRemove(index)}
+            />
+          )}
+        </HStack>
+
+        {hasEventFields && (
+          <VStack gap={2} hAlign="stretch">
+            <Text type="label" weight="bold">Conditions</Text>
+            <Text type="supporting" color="secondary">
+              Leave empty to match all events. Add conditions to filter which
+              events qualify for this group.
+            </Text>
+            <QueryBuilder
+              fields={allFields}
+              query={group.conditions as RqbRuleGroupType}
+              onQueryChange={(q: RqbRuleGroupType) =>
+                onChange(index, {
+                  ...group,
+                  conditions: q as unknown as RuleGroupType,
+                })
+              }
+              addRuleToNewGroups
+              operators={SUPPORTED_OPERATORS}
+              controlElements={AppQueryBuilderElements}
+            />
+          </VStack>
+        )}
+
+        <VStack gap={2} hAlign="stretch">
+          <Text type="label" weight="bold">Formula</Text>
+          <Selector
+            label="Formula type"
+            value={group.formulaType}
+            options={[
+              { value: "rate", label: "Rate (% of basis)" },
+              ...(hasNumericFields
+                ? [{ value: "flat", label: "Flat (fixed points)" }]
+                : []),
+            ]}
+            onChange={(v: string) => {
+              const ft = v as "rate" | "flat";
+              onChange(index, {
+                ...group,
+                formulaType: ft,
+                structured: {
+                  ...group.structured,
+                  type: ft,
+                },
+              });
+            }}
+          />
+
+          {group.formulaType === "rate" && (
+            <VStack gap={3} hAlign="stretch">
+              <Selector
+                label="Basis (what to take the percentage of)"
+                value={group.structured.basis}
+                options={numericFields.map((f) => ({
+                  value: f.name,
+                  label: f.label,
+                }))}
+                onChange={(v: string) => updateStructured({ basis: v })}
+              />
+              <NumberInput
+                label="Rate (%)"
+                value={group.structured.rate}
+                onChange={(v: number | null) =>
+                  updateStructured({ rate: v ?? 1 })
+                }
+                min={0.01}
+              />
+              <Text type="supporting" color="secondary">
+                e.g. {group.structured.rate}% of{" "}
+                {group.structured.basis || "basis"} becomes points
+              </Text>
+            </VStack>
+          )}
+
+          {group.formulaType === "flat" && (
+            <VStack gap={3} hAlign="stretch">
+              <NumberInput
+                label="Points to award"
+                value={group.structured.flatAmount}
+                onChange={(v: number | null) =>
+                  updateStructured({ flatAmount: v ?? 0 })
+                }
+                min={1}
+              />
+              <Text type="supporting" color="secondary">
+                Fixed points awarded when this group matches
+              </Text>
+            </VStack>
+          )}
+
+          <Selector
+            label="Rounding"
+            value={group.structured.rounding}
+            options={ROUNDING_OPTIONS}
+            onChange={(v: string) => updateStructured({ rounding: v as StructuredFormula["rounding"] })}
+          />
+          <HStack gap={3}>
+            <NumberInput
+              label="Min points (floor)"
+              value={group.structured.minPoints}
+              onChange={(v: number | null) =>
+                updateStructured({ minPoints: v })
+              }
+              isOptional
+            />
+            <NumberInput
+              label="Max points (cap)"
+              value={group.structured.maxPoints}
+              onChange={(v: number | null) =>
+                updateStructured({ maxPoints: v })
+              }
+              isOptional
+            />
+          </HStack>
+        </VStack>
+      </VStack>
+    </Card>
+  );
 }
 
 export default function RulesPage() {
@@ -216,14 +392,8 @@ export default function RulesPage() {
   const [step, setStep] = useState(0);
   const [state, setState] = useState<WizardState>(defaultWizardState);
 
-  const numericFields = getNumericFields(state.eventType, state.perItem);
-  const hasNumericFields = numericFields.length > 0;
-  const skipConditions = !hasFields(state.eventType);
-
-  const maxSteps = skipConditions ? 3 : 4;
-  const stepLabels = skipConditions
-    ? ["Basics", "Formula", "Review"]
-    : ["Basics", "Conditions", "Formula", "Review"];
+  const maxSteps = 3;
+  const stepLabels = ["Basics", "Formula Groups", "Review"];
 
   const openWizard = (prefill?: WizardState) => {
     setState(prefill ?? defaultWizardState());
@@ -249,13 +419,16 @@ export default function RulesPage() {
       showToast({ type: "error", body: "Rule name is required" });
       return;
     }
-    if (state.formulaType === "flat" && state.structured.flatAmount <= 0) {
-      showToast({ type: "error", body: "Flat amount must be greater than 0" });
-      return;
-    }
-    if (state.formulaType === "rate" && !state.structured.basis) {
-      showToast({ type: "error", body: "Basis is required for rate formulas" });
-      return;
+    for (let i = 0; i < state.formulaGroups.length; i++) {
+      const g = state.formulaGroups[i];
+      if (g.formulaType === "flat" && g.structured.flatAmount <= 0) {
+        showToast({ type: "error", body: `Formula group ${i + 1}: flat amount must be greater than 0` });
+        return;
+      }
+      if (g.formulaType === "rate" && !g.structured.basis) {
+        showToast({ type: "error", body: `Formula group ${i + 1}: basis is required for rate formulas` });
+        return;
+      }
     }
     try {
       const input = stateToInput(state);
@@ -290,6 +463,24 @@ export default function RulesPage() {
           showToast({ type: "error", body: "Failed to delete rule" });
         }
       },
+    });
+  };
+
+  const updateGroup = (index: number, updated: FormulaGroupState) => {
+    const groups = [...state.formulaGroups];
+    groups[index] = updated;
+    setState({ ...state, formulaGroups: groups });
+  };
+
+  const removeGroup = (index: number) => {
+    const groups = state.formulaGroups.filter((_, i) => i !== index);
+    setState({ ...state, formulaGroups: groups });
+  };
+
+  const addGroup = () => {
+    setState({
+      ...state,
+      formulaGroups: [...state.formulaGroups, defaultFormulaGroup()],
     });
   };
 
@@ -347,14 +538,7 @@ export default function RulesPage() {
                   label: eventLabel(t),
                 }))}
                 onChange={(v: string) => {
-                  const newEventType = v as EventType;
-                  const newHasNumericFields =
-                    getNumericFields(newEventType, state.perItem).length > 0;
-                  setState({
-                    ...state,
-                    eventType: newEventType,
-                    formulaType: newHasNumericFields ? "rate" : "flat",
-                  });
+                  setState({ ...state, eventType: v as EventType });
                 }}
               />
               {state.eventType === "purchase" && (
@@ -370,147 +554,35 @@ export default function RulesPage() {
           </Card>
         )}
 
-        {step === 1 && !skipConditions && (
-          <Card padding={6}>
-            <VStack gap={4} hAlign="stretch">
-              <Heading level={3}>Conditions</Heading>
-              <Text type="supporting" color="secondary">
-                Leave empty to match all events. Add conditions to filter which
-                events qualify for this rule.
-              </Text>
-              <QueryBuilder
-                fields={getFieldsForEvent(state.eventType, state.perItem)}
-                query={state.conditions as RqbRuleGroupType}
-                onQueryChange={(q: RqbRuleGroupType) =>
-                  setState({
-                    ...state,
-                    conditions: q as unknown as RuleGroupType,
-                  })
-                }
-                addRuleToNewGroups
-                operators={SUPPORTED_OPERATORS}
-                controlElements={AppQueryBuilderElements}
+        {step === 1 && (
+          <VStack gap={4} hAlign="stretch">
+            <Text type="supporting" color="secondary">
+              Add one or more formula groups. Each group has its own conditions
+              and formula. The highest-value matching group wins.
+            </Text>
+            {state.formulaGroups.map((g, i) => (
+              <FormulaGroupCard
+                key={i}
+                group={g}
+                index={i}
+                total={state.formulaGroups.length}
+                eventType={state.eventType}
+                perItem={state.perItem}
+                onChange={updateGroup}
+                onRemove={removeGroup}
+                canRemove={state.formulaGroups.length > 1}
               />
-            </VStack>
-          </Card>
+            ))}
+            <Button
+              label="Add formula group"
+              variant="secondary"
+              icon={<Plus size="1em" />}
+              onClick={addGroup}
+            />
+          </VStack>
         )}
 
-        {step === (skipConditions ? 1 : 2) && (
-          <Card padding={6}>
-            <VStack gap={4} hAlign="stretch">
-              <Heading level={3}>Formula</Heading>
-              <Text type="supporting" color="secondary">
-                Define how points are calculated.
-              </Text>
-
-              <Selector
-                label="Formula type"
-                value={state.formulaType}
-                options={[
-                  { value: "rate", label: "Rate (% of basis)" },
-                  ...(hasNumericFields
-                    ? [{ value: "flat", label: "Flat (fixed points)" }]
-                    : []),
-                ]}
-                onChange={(v: string) =>
-                  setState({ ...state, formulaType: v as "rate" | "flat" })
-                }
-              />
-
-              {state.formulaType === "rate" && (
-                <VStack gap={3} hAlign="stretch">
-                  <Selector
-                    label="Basis (what to take the percentage of)"
-                    value={state.structured.basis}
-                    options={numericFields.map((f) => ({
-                      value: f.name,
-                      label: f.label,
-                    }))}
-                    onChange={(v: string) =>
-                      setState({
-                        ...state,
-                        structured: { ...state.structured, basis: v },
-                      })
-                    }
-                  />
-                  <NumberInput
-                    label="Rate (%)"
-                    value={state.structured.rate}
-                    onChange={(v: number | null) =>
-                      setState({
-                        ...state,
-                        structured: { ...state.structured, rate: v ?? 1 },
-                      })
-                    }
-                    min={0.01}
-                  />
-                  <Text type="supporting" color="secondary">
-                    e.g. {state.structured.rate}% of{" "}
-                    {state.structured.basis || "basis"} becomes points
-                  </Text>
-                </VStack>
-              )}
-
-              {state.formulaType === "flat" && (
-                <VStack gap={3} hAlign="stretch">
-                  <NumberInput
-                    label="Points to award"
-                    value={state.structured.flatAmount}
-                    onChange={(v: number | null) =>
-                      setState({
-                        ...state,
-                        structured: { ...state.structured, flatAmount: v ?? 0 },
-                      })
-                    }
-                    min={1}
-                  />
-                  <Text type="supporting" color="secondary">
-                    Fixed points awarded when this rule matches (e.g. 50 points
-                    for signup)
-                  </Text>
-                </VStack>
-              )}
-
-              <Selector
-                label="Rounding"
-                value={state.structured.rounding}
-                options={ROUNDING_OPTIONS}
-                onChange={(v: string) =>
-                  setState({
-                    ...state,
-                    structured: { ...state.structured, rounding: v },
-                  })
-                }
-              />
-              <HStack gap={3}>
-                <NumberInput
-                  label="Min points (floor)"
-                  value={state.structured.minPoints}
-                  onChange={(v: number | null) =>
-                    setState({
-                      ...state,
-                      structured: { ...state.structured, minPoints: v },
-                    })
-                  }
-                  isOptional
-                />
-                <NumberInput
-                  label="Max points (cap)"
-                  value={state.structured.maxPoints}
-                  onChange={(v: number | null) =>
-                    setState({
-                      ...state,
-                      structured: { ...state.structured, maxPoints: v },
-                    })
-                  }
-                  isOptional
-                />
-              </HStack>
-            </VStack>
-          </Card>
-        )}
-
-        {step === maxSteps - 1 && (
+        {step === 2 && (
           <Card padding={6}>
             <VStack gap={4} hAlign="stretch">
               <Heading level={3}>Review &amp; save</Heading>
@@ -529,17 +601,29 @@ export default function RulesPage() {
                 </Text>
               )}
               <Text type="body">
-                Per item: {state.perItem ? "Yes" : "No"} · Formula:{" "}
-                {state.formulaType === "flat"
-                  ? `${state.structured.flatAmount} pts (flat)`
-                  : `${state.structured.rate}% of ${state.structured.basis}`}
+                Per item: {state.perItem ? "Yes" : "No"}
               </Text>
-              <Text type="body">
-                Conditions:{" "}
-                {isRuleGroupEmpty(state.conditions)
-                  ? "None (all events)"
-                  : "Custom conditions"}
-              </Text>
+              <VStack gap={2} hAlign="stretch">
+                <Text type="label" weight="bold">
+                  Formula groups ({state.formulaGroups.length})
+                </Text>
+                {state.formulaGroups.map((g, i) => (
+                  <HStack key={i} gap={2} vAlign="center">
+                    <Badge variant="blue" label={`Group ${i + 1}`} />
+                    <Text type="body">
+                      {groupSummaryText(g)}
+                      {isRuleGroupEmpty(g.conditions)
+                        ? " · All events"
+                        : " · Custom conditions"}
+                    </Text>
+                  </HStack>
+                ))}
+              </VStack>
+              <Banner
+                status="info"
+                title="When multiple groups match, the one with the highest point value wins."
+                container="card"
+              />
               <NumberInput
                 label="Points expire after (days, blank = never)"
                 value={state.pointsExpireAfterDays}
@@ -599,7 +683,7 @@ export default function RulesPage() {
 
       <Banner
         status="info"
-        title="Rules are evaluated in order. Multiple matching rules stack — all matching rules award points on the same event."
+        title="Rules are evaluated in order. The highest-value matching rule wins for each event."
         container="card"
       />
 
@@ -634,7 +718,6 @@ export default function RulesPage() {
             {
               key: "pointsExpireAfterDays",
               header: "Points expire after days",
-              // width: proportional(1),
               renderCell: (item) => (
                 <Text type="supporting" color="secondary">
                   {item.formulaText} · Expiry:{" "}

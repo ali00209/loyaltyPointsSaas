@@ -17,6 +17,7 @@ import {
   eventLabel,
   validateEventPayload,
   type EventType,
+  type FormulaGroup,
   type StructuredFormula,
 } from "@/lib/rules";
 
@@ -308,7 +309,21 @@ interface MatchedRuleRow {
   points: number;
 }
 
-// Evaluate every active rule for this event type and stack the points.
+function bestGroupPoints(
+  groups: FormulaGroup[],
+  facts: Record<string, unknown>,
+): number {
+  let best = 0;
+  for (const group of groups) {
+    if (!conditionsMatch(group.conditions as never, facts)) continue;
+    const formula = buildStructuredFormula(group.formula);
+    const pts = evaluateFormula(formula, facts);
+    if (pts > best) best = pts;
+  }
+  return best;
+}
+
+// Evaluate every active rule for this event type. Highest-value rule wins (no stacking).
 async function evaluateRulesForEvent(
   tx: Tx,
   input: ApplyEventInput,
@@ -326,35 +341,32 @@ async function evaluateRulesForEvent(
       ),
     );
 
-  const matches: MatchedRuleRow[] = [];
+  let bestMatch: MatchedRuleRow | null = null;
+
   for (const { rule } of rows) {
     if (!isRuleActive(rule)) continue;
 
-    const structured: StructuredFormula = {
-      type: (rule.formulaType as "rate" | "flat") ?? "rate",
-      basis: rule.formulaBasis ?? "orderAmount",
-      rate: Number(rule.formulaRate),
-      flatAmount: rule.formulaFlatAmount ?? 0,
-      rounding: rule.formulaRounding as StructuredFormula["rounding"],
-      minPoints: rule.formulaMinPoints,
-      maxPoints: rule.formulaMaxPoints,
-    };
-    const formula = buildStructuredFormula(structured);
+    const groups = (rule.formulaGroups as FormulaGroup[]) ?? [];
+    if (groups.length === 0) continue;
 
     let points = 0;
     if (rule.perItem) {
       for (const facts of itemFacts) {
-        if (conditionsMatch(rule.conditions as never, facts)) {
-          points += evaluateFormula(formula, facts);
-        }
+        points += bestGroupPoints(groups, facts);
       }
-    } else if (conditionsMatch(rule.conditions as never, orderFacts)) {
-      points += evaluateFormula(formula, orderFacts);
+    } else {
+      points = bestGroupPoints(groups, orderFacts);
     }
 
-    if (points > 0) matches.push({ rule, points });
+    if (points <= 0) continue;
+
+    // Highest value wins; first-in-list wins ties
+    if (!bestMatch || points > bestMatch.points) {
+      bestMatch = { rule, points };
+    }
   }
-  return matches;
+
+  return bestMatch ? [bestMatch] : [];
 }
 
 export async function applyEvent(

@@ -113,11 +113,6 @@ export default function AppSideBar() {
 
   const isAdmin = user.role === "admin";
   const navItems = isAdmin ? adminNavItems : ownerNavItems;
-  const brandColor = user.tenant?.brandingConfig?.brandColor as
-    string | undefined;
-  const logoBackground = brandColor
-    ? { backgroundColor: brandColor }
-    : undefined;
 
   return (
     <SideNav
@@ -126,14 +121,7 @@ export default function AppSideBar() {
           heading={isAdmin ? "LoyaltyHub" : user.tenant?.name || "LoyaltyHub"}
           subheading={isAdmin ? "Platform Admin" : "Owner Dashboard"}
           icon={
-            <HStack
-              width={36}
-              height={36}
-              hAlign="center"
-              vAlign="center"
-              style={logoBackground}
-              className="rounded-lg bg-(--color-brand-gold) text-(--color-brand-ink)"
-            >
+            <HStack width={36} height={36} hAlign="center" vAlign="center">
               <Icon icon={Star} size="md" />
             </HStack>
           }

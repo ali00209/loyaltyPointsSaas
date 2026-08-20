@@ -1,14 +1,17 @@
-export type RewardType = "discount" | "gift_card" | "physical_item" | "store_credit";
+export interface DiscountDetails {
+  discountType: "fixed" | "percent";
+  amount?: number;
+  percent?: number;
+}
 
 export interface RedemptionReward extends Record<string, unknown> {
   id: string;
   tenantId: string;
   name: string;
   pointsCost: number;
-  rewardType: RewardType;
   inventoryLimit: number | null;
   redeemedCount: number;
-  details: Record<string, unknown>;
+  details: DiscountDetails & Record<string, unknown>;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -17,7 +20,8 @@ export interface RedemptionReward extends Record<string, unknown> {
 export interface RewardInput {
   name: string;
   pointsCost?: number;
-  rewardType?: RewardType;
+  discountType?: "fixed" | "percent";
+  discountValue?: number;
   inventoryLimit?: number | null;
   description?: string;
   active?: boolean;

@@ -4,14 +4,14 @@ import {
   serializeExpression,
   validateRule,
   type EarnRuleConfig,
+  type FormulaGroup,
   type RuleGroupType,
   type StructuredFormula,
 } from "@/lib/rules";
 
 /**
  * Accept an owner-authored rule body and compile it into a validated
- * EarnRuleConfig. The body must include structured formula fields and
- * optionally a RuleGroupType conditions object.
+ * EarnRuleConfig. The body must include formulaGroups array.
  * Throws with a human-readable message on invalid input.
  */
 export function compileRuleBody(body: Record<string, unknown>): EarnRuleConfig {
@@ -26,27 +26,54 @@ export function compileRuleBody(body: Record<string, unknown>): EarnRuleConfig {
 
   const perItem = body.perItem === true;
 
-  let conditions: RuleGroupType;
-  if (body.conditions && typeof body.conditions === "object") {
-    const c = body.conditions as Record<string, unknown>;
-    if (typeof c.combinator !== "string" || !Array.isArray(c.rules)) {
-      throw new Error("Conditions must be a valid rule group (combinator + rules array)");
-    }
-    conditions = c as unknown as RuleGroupType;
+  // Accept new formulaGroups array format
+  let formulaGroups: FormulaGroup[] = [];
+
+  if (Array.isArray(body.formulaGroups) && body.formulaGroups.length > 0) {
+    formulaGroups = body.formulaGroups.map((g: Record<string, unknown>) => {
+      const conditions = parseConditions(g.conditions);
+      const formula = parseStructuredFormula(g.formula ?? g);
+      return { conditions, formula };
+    });
+  } else if (body.conditions || body.structured) {
+    // Legacy single-group format: wrap into a single-element array
+    const conditions = parseConditions(body.conditions);
+    const formula = parseStructuredFormula(body.structured);
+    formulaGroups = [{ conditions, formula }];
   } else {
-    conditions = { combinator: "and", rules: [] };
+    throw new Error("At least one formula group is required");
   }
 
-  if (!body.structured || typeof body.structured !== "object") {
+  const config: EarnRuleConfig = {
+    eventType: eventType as EarnRuleConfig["eventType"],
+    perItem,
+    formulaGroups,
+  };
+  validateRule(config);
+  return config;
+}
+
+function parseConditions(raw: unknown): RuleGroupType {
+  if (raw && typeof raw === "object") {
+    const c = raw as Record<string, unknown>;
+    if (typeof c.combinator === "string" && Array.isArray(c.rules)) {
+      return c as unknown as RuleGroupType;
+    }
+  }
+  return { combinator: "and", rules: [] };
+}
+
+function parseStructuredFormula(raw: unknown): StructuredFormula {
+  if (!raw || typeof raw !== "object") {
     throw new Error("Structured formula fields are required");
   }
-  const s = body.structured as Record<string, unknown>;
+  const s = raw as Record<string, unknown>;
   const formulaType = (s.type as "rate" | "flat") ?? "rate";
 
   if (formulaType === "flat") {
     const flatAmount = typeof s.flatAmount === "number" ? s.flatAmount : 0;
     if (flatAmount <= 0) throw new Error("Flat amount must be a positive number");
-    const structured: StructuredFormula = {
+    return {
       type: "flat",
       basis: "",
       rate: 0,
@@ -55,15 +82,6 @@ export function compileRuleBody(body: Record<string, unknown>): EarnRuleConfig {
       minPoints: typeof s.minPoints === "number" ? s.minPoints : null,
       maxPoints: typeof s.maxPoints === "number" ? s.maxPoints : null,
     };
-    const formula = buildStructuredFormula(structured);
-    const config: EarnRuleConfig = {
-      eventType: eventType as EarnRuleConfig["eventType"],
-      perItem,
-      conditions,
-      formula,
-    };
-    validateRule(config);
-    return config;
   }
 
   // Rate mode
@@ -73,7 +91,7 @@ export function compileRuleBody(body: Record<string, unknown>): EarnRuleConfig {
   if (typeof s.basis !== "string" || !s.basis) {
     throw new Error("Basis is required for rate formulas");
   }
-  const structured: StructuredFormula = {
+  return {
     type: "rate",
     basis: s.basis,
     rate: s.rate,
@@ -82,48 +100,25 @@ export function compileRuleBody(body: Record<string, unknown>): EarnRuleConfig {
     minPoints: typeof s.minPoints === "number" ? s.minPoints : null,
     maxPoints: typeof s.maxPoints === "number" ? s.maxPoints : null,
   };
-
-  const formula = buildStructuredFormula(structured);
-  const config: EarnRuleConfig = {
-    eventType: eventType as EarnRuleConfig["eventType"],
-    perItem,
-    conditions,
-    formula,
-  };
-  validateRule(config);
-  return config;
 }
 
 /** Human-readable expression for display. */
-export function formulaText(config: EarnRuleConfig): string {
-  return serializeExpression(config.formula);
+export function formulaTextFromGroups(groups: FormulaGroup[]): string {
+  if (!groups || groups.length === 0) return "No formula";
+  return groups
+    .map((g, i) => {
+      const expr = serializeExpression(buildStructuredFormula(g.formula));
+      return `Group ${i + 1}: ${expr}`;
+    })
+    .join(" | ");
 }
 
-/** Compute formulaText directly from DB columns. */
+/** Compute formulaText directly from DB row. */
 export function formulaTextFromColumns(row: {
-  formulaType?: string | null;
-  formulaBasis: string | null;
-  formulaRate: string | number;
-  formulaFlatAmount: number | null;
-  formulaRounding: string;
-  formulaMinPoints: number | null;
-  formulaMaxPoints: number | null;
+  formulaGroups?: FormulaGroup[] | null;
 }): string {
-  const formulaType = row.formulaType ?? "rate";
-  if (formulaType === "flat") {
-    const amt = row.formulaFlatAmount ?? 0;
-    return `${amt} pts`;
-  }
-  const structured: StructuredFormula = {
-    type: "rate",
-    basis: row.formulaBasis ?? "orderAmount",
-    rate: Number(row.formulaRate),
-    flatAmount: 0,
-    rounding: row.formulaRounding as StructuredFormula["rounding"],
-    minPoints: row.formulaMinPoints,
-    maxPoints: row.formulaMaxPoints,
-  };
-  return serializeExpression(buildStructuredFormula(structured));
+  const groups = (row.formulaGroups as FormulaGroup[]) ?? [];
+  return formulaTextFromGroups(groups);
 }
 
 export function parseOptionalDate(value: unknown): Date | null {

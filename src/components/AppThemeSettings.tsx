@@ -20,14 +20,6 @@ import {
   useThemeStore,
 } from "@/lib/store/theme";
 
-const themeLabels: Record<ThemeName, string> = {
-  y2k: "Y2K",
-  loyalty: "Loyalty Gold",
-  neutral: "Neutral",
-  butter: "Butter",
-  matcha: "Matcha",
-};
-
 export default function AppThemeSetting() {
   const { themeName, mode, setThemeName, setMode } = useThemeStore();
 
@@ -38,10 +30,7 @@ export default function AppThemeSetting() {
   ];
 
   // Convert the theme map to dropdown options
-  const themeOptions = Object.keys(themeMap).map((key) => ({
-    value: key as ThemeName,
-    label: themeLabels[key as ThemeName] || key,
-  }));
+  const themeOptions = Object.keys(themeMap);
 
   return (
     <Card>
@@ -80,15 +69,25 @@ export default function AppThemeSetting() {
         <Stack direction="vertical" align="stretch" gap={2}>
           <Heading level={4}>Theme Color Palette</Heading>
 
-          <Selector
-            label=""
-            value={themeName}
-            onChange={(v) => setThemeName(v as ThemeName)}
-            options={themeOptions.map((op) => ({
-              label: op.label,
-              value: op.label,
-            }))}
-          />
+          <Grid columns={3} gap={5}>
+            {themeOptions.map((t) => {
+              const isSelected = themeName === t;
+              return (
+                <SelectableCard
+                  key={t}
+                  label=""
+                  isSelected={isSelected}
+                  onChange={() => setThemeName(t as ThemeName)}
+                  role="button"
+                >
+                  <Stack direction="vertical" align="center">
+                    <Text size="xl">{t}</Text>
+                    {/*<Text weight="medium">{t}</Text>*/}
+                  </Stack>
+                </SelectableCard>
+              );
+            })}
+          </Grid>
         </Stack>
 
         {/* Footer note */}

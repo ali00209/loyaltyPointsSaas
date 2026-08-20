@@ -469,6 +469,11 @@ export interface StructuredFormula {
   maxPoints: number | null;
 }
 
+export interface FormulaGroup {
+  conditions: RuleGroupType;
+  formula: StructuredFormula;
+}
+
 /** Build an AST from friendly "structured" fields. */
 export function buildStructuredFormula(f: StructuredFormula): Expr {
   let expr: Expr;
@@ -579,8 +584,7 @@ function evaluateRule(rule: RuleType, ctx: EvalContext): boolean {
 export interface EarnRuleConfig {
   eventType: string;
   perItem: boolean;
-  conditions: RuleGroupType;
-  formula: Expr;
+  formulaGroups: FormulaGroup[];
 }
 
 /** The facts a rule can reference, keyed by event type. */
@@ -715,10 +719,21 @@ export function validateRule(rule: EarnRuleConfig): void {
   if (rule.perItem && rule.eventType !== "purchase") {
     throw new Error("perItem evaluation is only valid for purchase events");
   }
+  if (!Array.isArray(rule.formulaGroups) || rule.formulaGroups.length === 0) {
+    throw new Error("Rule must have at least one formula group");
+  }
   const facts = factsForEvent(rule.eventType, Boolean(rule.perItem));
   const allowed = new Set(Object.keys(facts));
-  validateConditions(rule.conditions, allowed);
-  validateFormula(rule.formula, allowed);
+  for (const group of rule.formulaGroups) {
+    if (!group.conditions || typeof group.conditions !== "object") {
+      throw new Error("Each formula group must have conditions");
+    }
+    if (!group.formula || typeof group.formula !== "object") {
+      throw new Error("Each formula group must have a formula");
+    }
+    validateConditions(group.conditions, allowed);
+    validateFormula(buildStructuredFormula(group.formula), allowed);
+  }
 }
 
 // ---------------------------- Event catalog ---------------------------------
@@ -846,17 +861,19 @@ export function validateEventPayload(
       if (orderAmount == null || Number.isNaN(Number(orderAmount)) || Number(orderAmount) < 0) {
         throw new Error("Purchase requires a valid orderAmount");
       }
-      if (!Array.isArray(p.items) || p.items.length === 0) {
-        throw new Error("Purchase requires at least one line item");
-      }
-      for (const item of p.items) {
-        if (!item || typeof item !== "object") throw new Error("Invalid line item");
-        const it = item as Record<string, unknown>;
-        if (typeof it.productId !== "string") throw new Error("Line item requires productId");
-        const qty = Number(it.quantity);
-        const price = Number(it.unitPrice);
-        if (!Number.isFinite(qty) || qty <= 0) throw new Error("Line item requires quantity > 0");
-        if (!Number.isFinite(price) || price < 0) throw new Error("Line item requires a unit price");
+      if (p.items !== undefined) {
+        if (!Array.isArray(p.items) || p.items.length === 0) {
+          throw new Error("If provided, items must be a non-empty array");
+        }
+        for (const item of p.items) {
+          if (!item || typeof item !== "object") throw new Error("Invalid line item");
+          const it = item as Record<string, unknown>;
+          if (typeof it.productId !== "string") throw new Error("Line item requires productId");
+          const qty = Number(it.quantity);
+          const price = Number(it.unitPrice);
+          if (!Number.isFinite(qty) || qty <= 0) throw new Error("Line item requires quantity > 0");
+          if (!Number.isFinite(price) || price < 0) throw new Error("Line item requires a unit price");
+        }
       }
       break;
     }

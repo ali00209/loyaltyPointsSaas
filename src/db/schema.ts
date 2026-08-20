@@ -12,7 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import type { RuleGroupType } from "react-querybuilder";
+import type { FormulaGroup } from "@/lib/rules";
 
 export const roleEnum = pgEnum("user_role", ["admin", "owner"]);
 
@@ -21,13 +21,6 @@ export const transactionTypeEnum = pgEnum("transaction_type", [
   "redeem",
   "adjust",
   "expire",
-]);
-
-export const rewardTypeEnum = pgEnum("reward_type", [
-  "discount",
-  "gift_card",
-  "physical_item",
-  "store_credit",
 ]);
 
 export const eventTypeEnum = pgEnum("event_type", [
@@ -127,17 +120,10 @@ export const earningRules = pgTable("earning_rules", {
   description: text("description"),
   eventType: eventTypeEnum("event_type").notNull(),
   perItem: boolean("per_item").notNull().default(false),
-  conditions: jsonb("conditions")
-    .$type<RuleGroupType>()
+  formulaGroups: jsonb("formula_groups")
+    .$type<FormulaGroup[]>()
     .notNull()
-    .default({ combinator: "and", rules: [] }),
-  formulaType: text("formula_type").notNull().default("rate"),
-  formulaBasis: text("formula_basis"),
-  formulaRate: numeric("formula_rate", { precision: 12, scale: 4 }).notNull().default("1"),
-  formulaFlatAmount: integer("formula_flat_amount"),
-  formulaRounding: text("formula_rounding").notNull().default("floor"),
-  formulaMinPoints: integer("formula_min_points"),
-  formulaMaxPoints: integer("formula_max_points"),
+    .default([]),
   pointsExpireAfterDays: integer("points_expire_after_days"),
   active: boolean("active").notNull().default(true),
   activeFrom: timestamp("active_from"),
@@ -156,7 +142,6 @@ export const redemptionRewards = pgTable("redemption_rewards", {
     .references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   pointsCost: integer("points_cost").notNull(),
-  rewardType: rewardTypeEnum("reward_type").notNull(),
   inventoryLimit: integer("inventory_limit"),
   redeemedCount: integer("redeemed_count").notNull().default(0),
   details: jsonb("details")

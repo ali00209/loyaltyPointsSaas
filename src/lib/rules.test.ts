@@ -15,6 +15,7 @@ import {
   validateRule,
   EMPTY_CONDITIONS,
   type EarnRuleConfig,
+  type FormulaGroup,
   type RuleGroupType,
 } from "./rules";
 
@@ -26,8 +27,12 @@ function rule(partial: Partial<EarnRuleConfig> = {}): EarnRuleConfig {
   return {
     eventType: "purchase",
     perItem: false,
-    conditions: EMPTY_CONDITIONS,
-    formula: { type: "field", name: "orderAmount" },
+    formulaGroups: partial.formulaGroups ?? [
+      {
+        conditions: EMPTY_CONDITIONS,
+        formula: { type: "rate", basis: "orderAmount", rate: 100, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+      },
+    ],
     ...partial,
   };
 }
@@ -370,8 +375,10 @@ describe("validateRule", () => {
     expect(() =>
       validateRule(rule({
         perItem: true,
-        formula: { type: "bin", op: "*", left: { type: "field", name: "quantity" }, right: { type: "num", value: 3 } },
-        conditions: { combinator: "and", rules: [{ field: "productId", operator: "=", value: "p1" }] },
+        formulaGroups: [{
+          conditions: { combinator: "and", rules: [{ field: "productId", operator: "=", value: "p1" }] },
+          formula: { type: "rate", basis: "quantity", rate: 300, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+        }],
       })),
     ).not.toThrow();
   });
@@ -384,13 +391,23 @@ describe("validateRule", () => {
 
   it("rejects unknown formula fields", () => {
     expect(() =>
-      validateRule(rule({ formula: { type: "field", name: "tax" } })),
+      validateRule(rule({
+        formulaGroups: [{
+          conditions: EMPTY_CONDITIONS,
+          formula: { type: "rate", basis: "tax", rate: 100, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+        }],
+      })),
     ).toThrow(/Unknown field "tax"/);
   });
 
   it("rejects unknown condition fields", () => {
     expect(() =>
-      validateRule(rule({ conditions: { combinator: "and", rules: [{ field: "tax", operator: "=", value: 1 }] } })),
+      validateRule(rule({
+        formulaGroups: [{
+          conditions: { combinator: "and", rules: [{ field: "tax", operator: "=", value: 1 }] },
+          formula: { type: "rate", basis: "orderAmount", rate: 100, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+        }],
+      })),
     ).toThrow(/Unknown field "tax"/);
   });
 });
@@ -413,17 +430,23 @@ describe("deriveEventKey", () => {
 });
 
 describe("validateEventPayload", () => {
-  it("rejects a purchase without items", () => {
-    expect(() => validateEventPayload("purchase", { orderAmount: 10 })).toThrow(/line item/);
+  it("accepts a purchase with only orderAmount (items optional)", () => {
+    expect(() => validateEventPayload("purchase", { orderAmount: 10 })).not.toThrow();
   });
 
-  it("accepts a valid purchase", () => {
+  it("accepts a valid purchase with items", () => {
     expect(() =>
       validateEventPayload("purchase", {
         orderAmount: 25,
         items: [{ productId: "p1", quantity: 2, unitPrice: 12.5 }],
       }),
     ).not.toThrow();
+  });
+
+  it("rejects purchase with empty items array", () => {
+    expect(() =>
+      validateEventPayload("purchase", { orderAmount: 10, items: [] }),
+    ).toThrow(/non-empty array/);
   });
 
   it("rejects invalid review payloads", () => {

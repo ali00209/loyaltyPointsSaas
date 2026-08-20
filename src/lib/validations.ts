@@ -115,13 +115,9 @@ export const UpdateProductSchema = z.object({
 
 // ─── Owner: Rewards ──────────────────────────────────────────────────────────
 
-const RewardType = z.enum(
-  ["discount", "gift_card", "physical_item", "store_credit"],
-  {
-    error:
-      "Invalid reward type. Must be discount, gift_card, physical_item, or store_credit",
-  },
-);
+const DiscountType = z.enum(["fixed", "percent"], {
+  error: "Discount type must be fixed or percent",
+});
 
 export const CreateRewardSchema = z.object({
   name,
@@ -129,7 +125,8 @@ export const CreateRewardSchema = z.object({
     .number()
     .int()
     .positive("Points cost must be greater than 0"),
-  rewardType: RewardType,
+  discountType: DiscountType.optional().default("fixed"),
+  discountValue: z.coerce.number().positive("Discount value must be greater than 0").optional(),
   inventoryLimit: z.coerce.number().int().nonnegative().nullable().optional(),
   description: z.string().max(500).optional(),
 });
@@ -142,7 +139,8 @@ export const UpdateRewardSchema = z.object({
     .int()
     .positive("Points cost must be greater than 0")
     .optional(),
-  rewardType: RewardType.optional(),
+  discountType: DiscountType.optional(),
+  discountValue: z.coerce.number().positive("Discount value must be greater than 0").optional(),
   inventoryLimit: z.coerce.number().int().nonnegative().nullable().optional(),
   description: z.string().max(500).optional(),
   active: z.boolean().optional(),
@@ -169,7 +167,7 @@ const RuleGroupSchema: z.ZodType = z.lazy(() =>
 const StructuredFormulaSchema = z.object({
   type: z.enum(["rate", "flat"]).optional(),
   basis: z.string().optional(),
-  rate: z.coerce.number().positive("Rate must be greater than 0").optional(),
+  rate: z.coerce.number().nonnegative("Rate must be 0 or more").optional(),
   flatAmount: z.coerce
     .number()
     .int()
@@ -180,13 +178,17 @@ const StructuredFormulaSchema = z.object({
   maxPoints: z.coerce.number().int().positive().nullable().optional(),
 });
 
+const FormulaGroupSchema = z.object({
+  conditions: RuleGroupSchema,
+  formula: StructuredFormulaSchema,
+});
+
 export const CreateRuleSchema = z.object({
   name,
   description: z.string().max(500).optional(),
   eventType: z.string().min(1, "Event type is required"),
   perItem: z.boolean().optional(),
-  conditions: RuleGroupSchema.optional(),
-  structured: StructuredFormulaSchema.optional(),
+  formulaGroups: z.array(FormulaGroupSchema).min(1, "At least one formula group is required"),
   pointsExpireAfterDays: z.coerce
     .number()
     .int()
@@ -217,8 +219,7 @@ export const UpdateRuleSchema = z.object({
   activeUntil: z.string().optional(),
   eventType: z.string().min(1).optional(),
   perItem: z.boolean().optional(),
-  conditions: RuleGroupSchema.optional(),
-  structured: StructuredFormulaSchema.optional(),
+  formulaGroups: z.array(FormulaGroupSchema).min(1).optional(),
 });
 
 // ─── Events ──────────────────────────────────────────────────────────────────

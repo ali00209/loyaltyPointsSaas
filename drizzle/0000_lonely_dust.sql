@@ -1,5 +1,4 @@
 CREATE TYPE "public"."event_type" AS ENUM('purchase', 'review', 'referral', 'newsletter_signup', 'social_share', 'customer_signup');--> statement-breakpoint
-CREATE TYPE "public"."reward_type" AS ENUM('discount', 'gift_card', 'physical_item', 'store_credit');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('admin', 'owner');--> statement-breakpoint
 CREATE TYPE "public"."transaction_type" AS ENUM('earn', 'redeem', 'adjust', 'expire');--> statement-breakpoint
 CREATE TABLE "api_keys" (
@@ -44,14 +43,7 @@ CREATE TABLE "earning_rules" (
 	"description" text,
 	"event_type" "event_type" NOT NULL,
 	"per_item" boolean DEFAULT false NOT NULL,
-	"conditions" jsonb DEFAULT '{"combinator":"and","rules":[]}'::jsonb NOT NULL,
-	"formula_type" text DEFAULT 'rate' NOT NULL,
-	"formula_basis" text,
-	"formula_rate" numeric(12, 4) DEFAULT '1' NOT NULL,
-	"formula_flat_amount" integer,
-	"formula_rounding" text DEFAULT 'floor' NOT NULL,
-	"formula_min_points" integer,
-	"formula_max_points" integer,
+	"formula_groups" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"points_expire_after_days" integer,
 	"active" boolean DEFAULT true NOT NULL,
 	"active_from" timestamp,
@@ -103,7 +95,6 @@ CREATE TABLE "redemption_rewards" (
 	"tenant_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"points_cost" integer NOT NULL,
-	"reward_type" "reward_type" NOT NULL,
 	"inventory_limit" integer,
 	"redeemed_count" integer DEFAULT 0 NOT NULL,
 	"details" jsonb DEFAULT '{}'::jsonb NOT NULL,

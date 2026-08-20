@@ -1,8 +1,6 @@
-import type { EventType, RuleGroupType, StructuredFormula } from "@/lib/rules";
+import type { EventType, FormulaGroup, RuleGroupType, StructuredFormula } from "@/lib/rules";
+export type { EventType, FormulaGroup, RuleGroupType, StructuredFormula };
 
-export type { EventType, RuleGroupType, StructuredFormula };
-
-// A rule belonging to a tenant.
 export interface EarningRule extends Record<string, unknown> {
   id: string;
   tenantId: string;
@@ -10,14 +8,7 @@ export interface EarningRule extends Record<string, unknown> {
   description: string | null;
   eventType: EventType;
   perItem: boolean;
-  conditions: RuleGroupType;
-  formulaType: string;
-  formulaBasis: string | null;
-  formulaRate: number;
-  formulaFlatAmount: number | null;
-  formulaRounding: string;
-  formulaMinPoints: number | null;
-  formulaMaxPoints: number | null;
+  formulaGroups: FormulaGroup[];
   formulaText: string;
   pointsExpireAfterDays: number | null;
   active: boolean;
@@ -27,19 +18,16 @@ export interface EarningRule extends Record<string, unknown> {
   updatedAt: string;
 }
 
-// Input for creating/updating a rule.
 export interface EarningRuleInput {
   name: string;
   description?: string | null;
   eventType?: EventType;
   perItem?: boolean;
-  conditions?: RuleGroupType;
-  structured?: StructuredFormula;
+  formulaGroups?: FormulaGroup[];
   pointsExpireAfterDays?: number | null;
   active?: boolean;
   activeFrom?: string | null;
   activeUntil?: string | null;
 }
 
-// Alias — rules are now directly tenant-owned, no assignment layer.
 export type AssignedRule = EarningRule;

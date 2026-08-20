@@ -33,15 +33,7 @@ import { EmptyState } from "@astryxdesign/core";
 import AppHeader from "@/components/AppHeader";
 import AppThemeSetting from "@/components/AppThemeSettings";
 
-const NAV_ITEMS = [
-  "Profile",
-  "Account",
-  "Members",
-  "Billing",
-  "Invoices",
-  "Theme",
-  "API",
-];
+const NAV_ITEMS = ["Profile", "Members", "Billing", "Invoices", "Theme", "API"];
 
 const SETTINGS_ITEMS: SearchableItem[] = [
   { id: "1", label: "Username" },

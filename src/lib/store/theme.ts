@@ -3,9 +3,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { butterTheme } from "@astryxdesign/theme-butter";
+import { gothicTheme } from "@astryxdesign/theme-gothic";
 import { matchaTheme } from "@astryxdesign/theme-matcha";
 import { neutralTheme } from "@astryxdesign/theme-neutral";
-import { y2kTheme } from "@astryxdesign/theme-y2k/built";
+import { stoneTheme } from "@astryxdesign/theme-stone";
+import { y2kTheme } from "@astryxdesign/theme-y2k";
+
 import { loyaltyTheme } from "../themes/loyalty-theme";
 
 export const themeMap = {
@@ -14,6 +17,8 @@ export const themeMap = {
   neutral: neutralTheme,
   butter: butterTheme,
   matcha: matchaTheme,
+  stone: stoneTheme,
+  gothic: gothicTheme,
 } as const;
 
 export type ThemeName = keyof typeof themeMap;
@@ -39,6 +44,13 @@ export const useThemeStore = create<ThemeStore>()(
     }),
     {
       name: "theme-store",
+      merge: (persisted, current) => {
+        const data = { ...current, ...(persisted as object) };
+        if (!(data.themeName in themeMap)) {
+          data.themeName = "butter";
+        }
+        return data;
+      },
     },
   ),
 );

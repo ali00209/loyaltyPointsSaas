@@ -42,8 +42,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
 
-  const s = body.structured ?? {};
-  const formulaType = s.type ?? "rate";
   const [rule] = await db
     .insert(earningRules)
     .values({
@@ -52,14 +50,7 @@ export async function POST(req: NextRequest) {
       description: body.description ?? null,
       eventType: compiled.eventType as EventType,
       perItem: compiled.perItem,
-      conditions: compiled.conditions,
-      formulaType,
-      formulaBasis: formulaType === "flat" ? null : String(s.basis ?? "orderAmount"),
-      formulaRate: String(s.rate ?? 1),
-      formulaFlatAmount: formulaType === "flat" ? (typeof s.flatAmount === "number" ? s.flatAmount : 0) : null,
-      formulaRounding: String(s.rounding ?? "floor"),
-      formulaMinPoints: typeof s.minPoints === "number" ? s.minPoints : null,
-      formulaMaxPoints: typeof s.maxPoints === "number" ? s.maxPoints : null,
+      formulaGroups: compiled.formulaGroups,
       pointsExpireAfterDays: parseExpiryDays(body.pointsExpireAfterDays),
       active: body.active !== undefined ? body.active : true,
       activeFrom: parseOptionalDate(body.activeFrom),

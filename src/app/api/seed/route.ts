@@ -11,7 +11,7 @@ import {
 import { hashPassword } from "@/lib/auth";
 import { applyAdjust, applyEvent, applyRedeem } from "@/lib/points";
 import { resetDemoData } from "@/lib/points";
-import type { EventType, RuleGroupType } from "@/lib/rules";
+import type { EventType, FormulaGroup, RuleGroupType, StructuredFormula } from "@/lib/rules";
 import { eq } from "drizzle-orm";
 
 const ADMIN_EMAIL = "admin@loyaltyapp.com";
@@ -23,11 +23,24 @@ function code(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const ALL: RuleGroupType = { combinator: "and", rules: [] };
 function rg(rules: RuleGroupType["rules"]): RuleGroupType {
   return { combinator: "and", rules };
 }
 
-const ALL: RuleGroupType = { combinator: "and", rules: [] };
+function rate(basis: string, ratePct: number, opts?: Partial<StructuredFormula>): FormulaGroup {
+  return {
+    conditions: ALL,
+    formula: { type: "rate", basis, rate: ratePct, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null, ...opts },
+  };
+}
+
+function flat(amount: number, conditions: RuleGroupType = ALL): FormulaGroup {
+  return {
+    conditions,
+    formula: { type: "flat", basis: "", rate: 0, flatAmount: amount, rounding: "floor", minPoints: null, maxPoints: null },
+  };
+}
 
 export async function POST() {
   try {
@@ -80,34 +93,22 @@ export async function POST() {
       .returning();
 
     // --- Rules ---
-    const ruleInputs: {
+    type RuleInput = {
       name: string;
       description: string;
       eventType: EventType;
       perItem: boolean;
-      conditions: RuleGroupType;
-      formulaType: string;
-      formulaBasis: string | null;
-      formulaRate: string;
-      formulaFlatAmount: number | null;
-      formulaRounding: string;
-      formulaMinPoints: number | null;
-      formulaMaxPoints: number | null;
+      formulaGroups: FormulaGroup[];
       pointsExpireAfterDays: number | null;
-    }[] = [
+    };
+
+    const ruleInputs: RuleInput[] = [
       {
         name: "Standard Spend Rewards",
         description: "Earn 1 point per $1 spent on any purchase",
         eventType: "purchase",
         perItem: false,
-        conditions: ALL,
-        formulaType: "rate",
-        formulaBasis: "orderAmount",
-        formulaRate: "100",
-        formulaFlatAmount: null,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [rate("orderAmount", 100)],
         pointsExpireAfterDays: null,
       },
       {
@@ -115,14 +116,12 @@ export async function POST() {
         description: "Earn 2 points per beverage line item",
         eventType: "purchase",
         perItem: true,
-        conditions: rg([{ field: "productCategory", operator: "=", value: "Beverages" }]),
-        formulaType: "rate",
-        formulaBasis: "quantity",
-        formulaRate: "200",
-        formulaFlatAmount: null,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [
+          {
+            conditions: rg([{ field: "productCategory", operator: "=", value: "Beverages" }]),
+            formula: { type: "rate", basis: "quantity", rate: 200, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+          },
+        ],
         pointsExpireAfterDays: null,
       },
       {
@@ -130,14 +129,12 @@ export async function POST() {
         description: "Earn 2 points per bakery item",
         eventType: "purchase",
         perItem: true,
-        conditions: rg([{ field: "productCategory", operator: "=", value: "Bakery" }]),
-        formulaType: "rate",
-        formulaBasis: "quantity",
-        formulaRate: "200",
-        formulaFlatAmount: null,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [
+          {
+            conditions: rg([{ field: "productCategory", operator: "=", value: "Bakery" }]),
+            formula: { type: "rate", basis: "quantity", rate: 200, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+          },
+        ],
         pointsExpireAfterDays: null,
       },
       {
@@ -145,17 +142,15 @@ export async function POST() {
         description: "Orders $20-$50 earn 2 points per dollar",
         eventType: "purchase",
         perItem: false,
-        conditions: rg([
-          { field: "orderAmount", operator: ">=", value: 20 },
-          { field: "orderAmount", operator: "<=", value: 50 },
-        ]),
-        formulaType: "rate",
-        formulaBasis: "orderAmount",
-        formulaRate: "200",
-        formulaFlatAmount: null,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [
+          {
+            conditions: rg([
+              { field: "orderAmount", operator: ">=", value: 20 },
+              { field: "orderAmount", operator: "<=", value: 50 },
+            ]),
+            formula: { type: "rate", basis: "orderAmount", rate: 200, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+          },
+        ],
         pointsExpireAfterDays: null,
       },
       {
@@ -163,14 +158,12 @@ export async function POST() {
         description: "Buy 3+ units and earn 5 points per unit",
         eventType: "purchase",
         perItem: false,
-        conditions: rg([{ field: "itemQuantity", operator: ">=", value: 3 }]),
-        formulaType: "rate",
-        formulaBasis: "itemQuantity",
-        formulaRate: "500",
-        formulaFlatAmount: null,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [
+          {
+            conditions: rg([{ field: "itemQuantity", operator: ">=", value: 3 }]),
+            formula: { type: "rate", basis: "itemQuantity", rate: 500, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+          },
+        ],
         pointsExpireAfterDays: 30,
       },
       {
@@ -178,14 +171,12 @@ export async function POST() {
         description: "Earn 3 points per dollar on orders $50+",
         eventType: "purchase",
         perItem: false,
-        conditions: rg([{ field: "orderAmount", operator: ">=", value: 50 }]),
-        formulaType: "rate",
-        formulaBasis: "orderAmount",
-        formulaRate: "300",
-        formulaFlatAmount: null,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [
+          {
+            conditions: rg([{ field: "orderAmount", operator: ">=", value: 50 }]),
+            formula: { type: "rate", basis: "orderAmount", rate: 300, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+          },
+        ],
         pointsExpireAfterDays: 180,
       },
       {
@@ -193,14 +184,7 @@ export async function POST() {
         description: "New customers earn 50 points",
         eventType: "customer_signup",
         perItem: false,
-        conditions: ALL,
-        formulaType: "flat",
-        formulaBasis: null,
-        formulaRate: "0",
-        formulaFlatAmount: 50,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [flat(50)],
         pointsExpireAfterDays: 30,
       },
       {
@@ -208,14 +192,9 @@ export async function POST() {
         description: "Leave a 4-5 star review and earn 25 points",
         eventType: "review",
         perItem: false,
-        conditions: rg([{ field: "rating", operator: ">=", value: 4 }]),
-        formulaType: "flat",
-        formulaBasis: null,
-        formulaRate: "0",
-        formulaFlatAmount: 25,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [
+          flat(25, rg([{ field: "rating", operator: ">=", value: 4 }])),
+        ],
         pointsExpireAfterDays: null,
       },
       {
@@ -223,14 +202,7 @@ export async function POST() {
         description: "Join the newsletter and earn 20 points",
         eventType: "newsletter_signup",
         perItem: false,
-        conditions: ALL,
-        formulaType: "flat",
-        formulaBasis: null,
-        formulaRate: "0",
-        formulaFlatAmount: 20,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [flat(20)],
         pointsExpireAfterDays: null,
       },
       {
@@ -238,14 +210,7 @@ export async function POST() {
         description: "Refer a friend and earn 100 points",
         eventType: "referral",
         perItem: false,
-        conditions: ALL,
-        formulaType: "flat",
-        formulaBasis: null,
-        formulaRate: "0",
-        formulaFlatAmount: 100,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [flat(100)],
         pointsExpireAfterDays: 90,
       },
       {
@@ -253,14 +218,7 @@ export async function POST() {
         description: "Share on social and earn 10 points",
         eventType: "social_share",
         perItem: false,
-        conditions: ALL,
-        formulaType: "flat",
-        formulaBasis: null,
-        formulaRate: "0",
-        formulaFlatAmount: 10,
-        formulaRounding: "floor",
-        formulaMinPoints: null,
-        formulaMaxPoints: null,
+        formulaGroups: [flat(10)],
         pointsExpireAfterDays: null,
       },
     ];
@@ -309,12 +267,12 @@ export async function POST() {
       .insert(redemptionRewards)
       .values(
         [
-          { name: "Free Beverage", pointsCost: 500, rewardType: "physical_item" as const, inventoryLimit: 1000 },
-          { name: "Merchandise Item", pointsCost: 1000, rewardType: "physical_item" as const, inventoryLimit: 200 },
-          { name: "$25 Gift Card", pointsCost: 2500, rewardType: "gift_card" as const, inventoryLimit: null },
-          { name: "10% Off Discount", pointsCost: 300, rewardType: "discount" as const, inventoryLimit: null },
-          { name: "$10 Store Credit", pointsCost: 1000, rewardType: "store_credit" as const, inventoryLimit: null },
-        ].map((r) => ({ tenantId: tenant.id, active: true, redeemedCount: 0, details: {}, ...r })),
+          { name: "Free Beverage", pointsCost: 500, inventoryLimit: 1000, details: { discountType: "fixed", amount: 5 } },
+          { name: "10% Off Discount", pointsCost: 300, inventoryLimit: null, details: { discountType: "percent", percent: 10, description: "10% off your next purchase" } },
+          { name: "$10 Store Credit", pointsCost: 1000, inventoryLimit: null, details: { discountType: "fixed", amount: 10, description: "$10 off your next purchase" } },
+          { name: "$25 Gift Card", pointsCost: 2500, inventoryLimit: null, details: { discountType: "fixed", amount: 25, description: "$25 off your next purchase" } },
+          { name: "Merchandise Item", pointsCost: 1000, inventoryLimit: 200, details: { discountType: "fixed", amount: 15, description: "Any merchandise item up to $15" } },
+        ].map((r) => ({ tenantId: tenant.id, active: true, redeemedCount: 0, ...r })),
       )
       .returning();
 
@@ -438,9 +396,9 @@ export async function POST() {
     ]);
 
     // --- Redeem a few rewards ---
-    const [freeBeverage, merch] = rewards;
+    const [freeBeverage, tenPercentOff, , , merch] = rewards;
     await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[0].id, rewardId: freeBeverage.id, description: "Free beverage redemption" });
-    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[1].id, rewardId: rewards[3].id, description: "10% off discount redemption" });
+    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[1].id, rewardId: tenPercentOff.id, description: "10% off discount redemption" });
     await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[3].id, rewardId: merch.id, description: "Merchandise redemption" });
 
     // Idempotency sanity

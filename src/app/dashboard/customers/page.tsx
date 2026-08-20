@@ -198,7 +198,7 @@ export default function CustomersPage() {
                 <HStack gap={1} hAlign="center">
                   <Button
                     label="Edit"
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     onClick={() => openEdit(c)}
                   />

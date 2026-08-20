@@ -2,6 +2,7 @@
 
 import {
   ApiError,
+  changePassword,
   createCustomer,
   createProduct,
   createReward,
@@ -46,11 +47,13 @@ import {
   updateReward,
   updateRule,
   updateTenant,
+  updateProfile,
 } from "@/lib/api";
 import type {
   AdminOverview,
   AdminTenant,
   AdminTenantDetail,
+  ChangePasswordInput,
   CreateTenantInput,
   Customer,
   CustomerInput,
@@ -64,6 +67,7 @@ import type {
   RegisterInput,
   RewardInput,
   TransactionInput,
+  UpdateProfileInput,
   UpdateTenantInput,
   User,
 } from "@/types";
@@ -298,6 +302,22 @@ export function useCurrentUser() {
       }),
     retry: false,
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateProfileInput) => updateProfile(input),
+    onSuccess: (user) => {
+      queryClient.setQueryData<User | null>(queryKeys.auth.me, user);
+    },
+  });
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (input: ChangePasswordInput) => changePassword(input),
   });
 }
 

@@ -10,8 +10,7 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Icon } from "@astryxdesign/core/Icon";
-import { Badge } from "@astryxdesign/core/Badge";
-import { Table, pixel, proportional } from "@astryxdesign/core/Table";
+import { Table, proportional } from "@astryxdesign/core/Table";
 import { Switch } from "@astryxdesign/core/Switch";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { useImperativeAlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -25,34 +24,23 @@ import {
   useUpdateReward,
   useDeleteReward,
 } from "@/lib/query";
-import type { RedemptionReward, RewardInput, RewardType } from "@/types";
+import type { RedemptionReward, RewardInput, DiscountDetails } from "@/types";
 
-const rewardTypeLabels: Record<string, string> = {
-  discount: "Discount",
-  gift_card: "Gift Card",
-  physical_item: "Physical Item",
-  store_credit: "Store Credit",
-};
-
-const rewardTypeBadge: Record<string, "blue" | "green" | "yellow" | "purple"> =
-  {
-    discount: "blue",
-    gift_card: "yellow",
-    physical_item: "purple",
-    store_credit: "green",
-  };
-
-const REWARD_TYPES: Array<{ value: string; label: string }> = [
-  { value: "discount", label: "Discount" },
-  { value: "gift_card", label: "Gift Card" },
-  { value: "physical_item", label: "Physical Item" },
-  { value: "store_credit", label: "Store Credit" },
-];
+function discountLabel(details: DiscountDetails): string {
+  if (details.discountType === "percent" && details.percent != null) {
+    return `${details.percent}% off`;
+  }
+  if (details.discountType === "fixed" && details.amount != null) {
+    return `$${details.amount} off`;
+  }
+  return "Discount";
+}
 
 interface RewardForm {
   name: string;
   pointsCost: number | null;
-  rewardType: string;
+  discountType: "fixed" | "percent";
+  discountValue: number | null;
   inventoryLimit: number | null;
   description: string;
 }
@@ -60,7 +48,8 @@ interface RewardForm {
 const defaultForm: RewardForm = {
   name: "",
   pointsCost: null,
-  rewardType: "discount",
+  discountType: "fixed",
+  discountValue: null,
   inventoryLimit: null,
   description: "",
 };
@@ -85,11 +74,13 @@ export default function RewardsPage() {
   };
 
   const openEdit = (r: RedemptionReward) => {
+    const d = (r.details ?? {}) as DiscountDetails;
     setEditing(r);
     setForm({
       name: r.name,
       pointsCost: r.pointsCost,
-      rewardType: r.rewardType,
+      discountType: d.discountType ?? "fixed",
+      discountValue: d.amount ?? d.percent ?? null,
       inventoryLimit: r.inventoryLimit,
       description: (r.details?.description as string | undefined) || "",
     });
@@ -102,7 +93,8 @@ export default function RewardsPage() {
       const payload: RewardInput = {
         name: form.name,
         pointsCost: form.pointsCost ?? 0,
-        rewardType: form.rewardType as RewardType,
+        discountType: form.discountType,
+        discountValue: form.discountValue ?? undefined,
         inventoryLimit: form.inventoryLimit,
         description: form.description || undefined,
       };
@@ -150,7 +142,7 @@ export default function RewardsPage() {
     <VStack gap={6} hAlign="stretch">
       <AppHeader
         heading="Rewards"
-        description="Create rewards customers can redeem with their points"
+        description="Create discount rewards customers can redeem with their points"
         showButton={true}
         onClick={openCreate}
         showSearch={false}
@@ -161,7 +153,7 @@ export default function RewardsPage() {
         <Card padding={8}>
           <EmptyState
             title="No rewards defined"
-            description="Create rewards your customers can redeem points for"
+            description="Create discount rewards your customers can redeem points for"
             icon={<Icon icon={Gift} size="lg" />}
             actions={
               <Button
@@ -188,22 +180,13 @@ export default function RewardsPage() {
                   <Text type="body" weight="medium">
                     {r.name}
                   </Text>
-                  {r.details?.description ? (
-                    <Text type="supporting" color="secondary" maxLines={1}>
-                      {String(r.details.description)}
-                    </Text>
-                  ) : null}
+                  <Text type="supporting" color="secondary" maxLines={1}>
+                    {discountLabel((r.details ?? {}) as DiscountDetails)}
+                    {r.details?.description
+                      ? ` · ${String(r.details.description)}`
+                      : ""}
+                  </Text>
                 </VStack>
-              ),
-            },
-            {
-              key: "rewardType",
-              header: "Type",
-              renderCell: (r: RedemptionReward) => (
-                <Badge
-                  variant={rewardTypeBadge[r.rewardType] || "neutral"}
-                  label={rewardTypeLabels[r.rewardType] || r.rewardType}
-                />
               ),
             },
             {
@@ -258,7 +241,7 @@ export default function RewardsPage() {
                 <HStack gap={1} hAlign="center">
                   <Button
                     label="Edit"
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     onClick={() => openEdit(r)}
                   />
@@ -288,7 +271,7 @@ export default function RewardsPage() {
         <VStack gap={3} hAlign="stretch">
           <TextInput
             label="Reward Name"
-            placeholder="e.g. Free Large Latte"
+            placeholder="e.g. 10% Off Discount"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
             isRequired
@@ -303,12 +286,22 @@ export default function RewardsPage() {
               isRequired
             />
             <Selector
-              label="Reward Type"
-              options={REWARD_TYPES}
-              value={form.rewardType}
-              onChange={(v) => setForm({ ...form, rewardType: v })}
+              label="Discount Type"
+              options={[
+                { value: "fixed", label: "Fixed Amount ($)" },
+                { value: "percent", label: "Percentage (%)" },
+              ]}
+              value={form.discountType}
+              onChange={(v) => setForm({ ...form, discountType: v as "fixed" | "percent" })}
             />
           </HStack>
+          <NumberInput
+            label={form.discountType === "fixed" ? "Discount Amount ($)" : "Discount Percentage (%)"}
+            value={form.discountValue}
+            onChange={(v) => setForm({ ...form, discountValue: v })}
+            min={1}
+            isOptional
+          />
           <NumberInput
             label="Inventory Limit (optional — empty = unlimited)"
             value={form.inventoryLimit}

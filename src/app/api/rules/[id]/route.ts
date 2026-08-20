@@ -27,22 +27,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.activeFrom !== undefined) setValues.activeFrom = parseOptionalDate(body.activeFrom);
   if (body.activeUntil !== undefined) setValues.activeUntil = parseOptionalDate(body.activeUntil);
 
-  const engineKeys = ["eventType", "perItem", "conditions", "structured"];
+  const engineKeys = ["eventType", "perItem", "formulaGroups"];
   if (engineKeys.some((k) => body[k as keyof typeof body] !== undefined)) {
     try {
       const compiled = compileRuleBody({ ...body, name: body.name ?? "placeholder" });
-      const s = body.structured ?? {};
-      const formulaType = s?.type ?? "rate";
       setValues.eventType = compiled.eventType;
       setValues.perItem = compiled.perItem;
-      setValues.conditions = compiled.conditions;
-      setValues.formulaType = formulaType;
-      setValues.formulaBasis = formulaType === "flat" ? null : String(s?.basis ?? "orderAmount");
-      setValues.formulaRate = String(s?.rate ?? 1);
-      setValues.formulaFlatAmount = formulaType === "flat" ? (typeof s?.flatAmount === "number" ? s.flatAmount : 0) : null;
-      setValues.formulaRounding = String(s?.rounding ?? "floor");
-      setValues.formulaMinPoints = typeof s?.minPoints === "number" ? s.minPoints : null;
-      setValues.formulaMaxPoints = typeof s?.maxPoints === "number" ? s.maxPoints : null;
+      setValues.formulaGroups = compiled.formulaGroups;
     } catch (err) {
       return NextResponse.json({ error: (err as Error).message }, { status: 400 });
     }

@@ -1,7 +1,11 @@
 import { db } from "@/db";
 import { redemptionRewards } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
-import { CreateRewardSchema, UpdateRewardSchema, parseBody } from "@/lib/validations";
+import {
+  CreateRewardSchema,
+  parseBody,
+  UpdateRewardSchema,
+} from "@/lib/validations";
 import { and, desc, eq, SQL } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -36,7 +40,25 @@ export async function POST(req: NextRequest) {
 
   const parsed = await parseBody(req, CreateRewardSchema);
   if (parsed.error) return parsed.error;
-  const { name, pointsCost, rewardType, inventoryLimit, description } = parsed.data;
+  const {
+    name,
+    pointsCost,
+    discountType,
+    discountValue,
+    inventoryLimit,
+    description,
+  } = parsed.data;
+
+  const details: Record<string, unknown> = {};
+  if (description) details.description = description;
+  if (discountType) {
+    details.discountType = discountType;
+    if (discountType === "fixed" && discountValue != null) {
+      details.amount = discountValue;
+    } else if (discountType === "percent" && discountValue != null) {
+      details.percent = discountValue;
+    }
+  }
 
   const [reward] = await db
     .insert(redemptionRewards)
@@ -44,9 +66,8 @@ export async function POST(req: NextRequest) {
       tenantId,
       name,
       pointsCost,
-      rewardType,
       inventoryLimit: inventoryLimit ?? null,
-      details: description ? { description } : {},
+      details,
     })
     .returning();
 
@@ -60,15 +81,54 @@ export async function PUT(req: NextRequest) {
 
   const parsed = await parseBody(req, UpdateRewardSchema);
   if (parsed.error) return parsed.error;
-  const { id, name, pointsCost, rewardType, inventoryLimit, description, active } = parsed.data;
+  const {
+    id,
+    name,
+    pointsCost,
+    discountType,
+    discountValue,
+    inventoryLimit,
+    description,
+    active,
+  } = parsed.data;
 
   const setValues: Record<string, unknown> = { updatedAt: new Date() };
   if (name !== undefined) setValues.name = name;
-  if (rewardType !== undefined) setValues.rewardType = rewardType;
   if (pointsCost !== undefined) setValues.pointsCost = pointsCost;
   if (inventoryLimit !== undefined) setValues.inventoryLimit = inventoryLimit;
-  if (description !== undefined) setValues.details = description ? { description } : {};
   if (active !== undefined) setValues.active = active;
+  if (
+    discountType !== undefined ||
+    discountValue !== undefined ||
+    description !== undefined
+  ) {
+    // Merge into existing details — need to fetch first for updates
+    const [existing] = await db
+      .select({ details: redemptionRewards.details })
+      .from(redemptionRewards)
+      .where(
+        and(
+          eq(redemptionRewards.id, id),
+          eq(redemptionRewards.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+    const prev = (existing?.details as Record<string, unknown>) ?? {};
+    const details = { ...prev };
+    if (description !== undefined)
+      details.description = description || undefined;
+    if (discountType !== undefined) details.discountType = discountType;
+    if (discountValue !== undefined) {
+      if ((discountType ?? details.discountType) === "percent") {
+        details.percent = discountValue;
+        delete details.amount;
+      } else {
+        details.amount = discountValue;
+        delete details.percent;
+      }
+    }
+    setValues.details = details;
+  }
 
   const [reward] = await db
     .update(redemptionRewards)
