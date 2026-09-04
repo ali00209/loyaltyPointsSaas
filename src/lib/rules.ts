@@ -711,6 +711,24 @@ export function validateConditions(conditions: RuleGroupType, allowedFields: Set
   validateRuleGroup(conditions, allowedFields);
 }
 
+/** Safe facts accepted by automatic redemption rules. */
+export const REDEMPTION_FACT_FIELDS = {
+  orderAmount: "number",
+  itemQuantity: "number",
+  itemCount: "number",
+  quantity: "number",
+  unitPrice: "number",
+  productId: "string",
+  productCategory: "string",
+  productIds: "string",
+  productCategories: "string",
+  pointsBalance: "number",
+} as const;
+
+export function validateRedemptionConditions(conditions: RuleGroupType): void {
+  validateConditions(conditions, new Set(Object.keys(REDEMPTION_FACT_FIELDS)));
+}
+
 export function validateRule(rule: EarnRuleConfig): void {
   if (!rule || typeof rule !== "object") throw new Error("Rule must be an object");
   if (typeof rule.eventType !== "string" || rule.eventType.length === 0) {
@@ -740,6 +758,7 @@ export function validateRule(rule: EarnRuleConfig): void {
 
 export type EventType =
   | "purchase"
+  | "visit"
   | "review"
   | "referral"
   | "newsletter_signup"
@@ -775,7 +794,7 @@ export const EVENT_CATALOG: Record<EventType, EventCatalogEntry> = {
     label: "Purchase",
     description: "An order placed at the POS, with line items.",
     fields: {
-      orderAmount: { type: "number", description: "Order total ($)" },
+      orderAmount: { type: "number", description: "Order total (PKR)" },
       itemQuantity: { type: "number", description: "Total units in the order" },
       itemCount: { type: "number", description: "Distinct line items" },
       quantity: { type: "number", description: "Units in this line item (per-item rules)" },
@@ -787,6 +806,18 @@ export const EVENT_CATALOG: Record<EventType, EventCatalogEntry> = {
     deriveKey: (_customerId, payload) =>
       str(payload.orderNumber) ? `purchase:${payload.orderNumber}` : null,
     allowedPosters: ["apiKey", "owner"],
+  },
+  visit: {
+    label: "Visit",
+    description: "A customer checks in at a location (QR stamp card).",
+    fields: {
+      visitCount: { type: "number", description: "This customer's lifetime visit number" },
+      locationId: { type: "string", description: "Location checked into (optional)" },
+      checkedInAt: { type: "string", description: "Check-in timestamp (optional)" },
+    },
+    deriveKey: (customerId) =>
+      `visit:${customerId}:${new Date().toISOString().slice(0, 10)}`,
+    allowedPosters: ["customer", "owner"],
   },
   review: {
     label: "Review",
@@ -887,6 +918,14 @@ export function validateEventPayload(
     case "social_share":
       if (p.platform !== undefined && typeof p.platform !== "string") {
         throw new Error("Platform must be a string");
+      }
+      break;
+    case "visit":
+      if (p.locationId !== undefined && typeof p.locationId !== "string") {
+        throw new Error("locationId must be a string");
+      }
+      if (p.checkedInAt !== undefined && typeof p.checkedInAt !== "string") {
+        throw new Error("checkedInAt must be a string");
       }
       break;
     default:

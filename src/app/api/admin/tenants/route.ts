@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { customers, redemptionRewards, tenants, users } from "@/db/schema";
+import { customers, redemptionRules, tenants, users } from "@/db/schema";
 import { requireAdminUser } from "@/lib/api-guard";
 import { createToken, hashPassword } from "@/lib/auth";
 import { slugify } from "@/lib/slug";
@@ -22,11 +22,11 @@ export async function GET() {
 
   const rewardCounts = db
     .select({
-      tenantId: redemptionRewards.tenantId,
+      tenantId: redemptionRules.tenantId,
       count: sql<number>`count(*)::int`.as("reward_count"),
     })
-    .from(redemptionRewards)
-    .groupBy(redemptionRewards.tenantId)
+    .from(redemptionRules)
+    .groupBy(redemptionRules.tenantId)
     .as("reward_counts");
 
   const rows = await db

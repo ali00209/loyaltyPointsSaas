@@ -51,7 +51,13 @@ function PortalLanding() {
     if (loading) return;
     setLoading(true);
     try {
-      await loginMutation.mutateAsync({ slug, email, password });
+      const identifier = email.trim();
+      await loginMutation.mutateAsync({
+        ...(identifier.includes("@")
+          ? { email: identifier }
+          : { phone: identifier }),
+        password,
+      });
       router.push(`/p/${slug}/overview`);
     } catch (err) {
       showToast({
@@ -67,10 +73,12 @@ function PortalLanding() {
     if (loading) return;
     setLoading(true);
     try {
+      const identifier = email.trim();
       const result = await signupMutation.mutateAsync({
-        slug,
         name,
-        email,
+        ...(identifier.includes("@")
+          ? { email: identifier }
+          : { phone: identifier }),
         password,
         ref,
       });
@@ -146,9 +154,9 @@ function PortalLanding() {
                 />
               )}
               <TextInput
-                label="Email"
-                type="email"
-                placeholder="you@example.com"
+                label="Email or Phone"
+                type="text"
+                placeholder="you@example.com or +9203xxxxxx"
                 value={email}
                 onChange={setEmail}
                 isRequired
@@ -182,7 +190,7 @@ function PortalLanding() {
                 width="100%"
                 isLoading={loading}
                 isDisabled={
-                  loading || !email || !password || (mode === "signup" && !name)
+                  loading || !password || (mode === "signup" && !name)
                 }
               />
             </VStack>

@@ -1,4 +1,4 @@
-CREATE TYPE "public"."event_type" AS ENUM('purchase', 'review', 'referral', 'newsletter_signup', 'social_share', 'customer_signup');--> statement-breakpoint
+CREATE TYPE "public"."event_type" AS ENUM('purchase', 'visit', 'review', 'referral', 'newsletter_signup', 'social_share', 'customer_signup');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('admin', 'owner');--> statement-breakpoint
 CREATE TYPE "public"."transaction_type" AS ENUM('earn', 'redeem', 'adjust', 'expire');--> statement-breakpoint
 CREATE TABLE "api_keys" (

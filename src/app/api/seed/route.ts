@@ -4,12 +4,12 @@ import {
   customers,
   earningRules,
   products,
-  redemptionRewards,
+  redemptionRules,
   tenants,
   users,
 } from "@/db/schema";
 import { hashPassword } from "@/lib/auth";
-import { applyAdjust, applyEvent, applyRedeem } from "@/lib/points";
+import { applyAdjust, applyEvent } from "@/lib/points";
 import { resetDemoData } from "@/lib/points";
 import type { EventType, FormulaGroup, RuleGroupType, StructuredFormula } from "@/lib/rules";
 import { eq } from "drizzle-orm";
@@ -105,7 +105,7 @@ export async function POST() {
     const ruleInputs: RuleInput[] = [
       {
         name: "Standard Spend Rewards",
-        description: "Earn 1 point per $1 spent on any purchase",
+        description: "Earn 1 point per PKR 1 spent on any purchase",
         eventType: "purchase",
         perItem: false,
         formulaGroups: [rate("orderAmount", 100)],
@@ -139,7 +139,7 @@ export async function POST() {
       },
       {
         name: "Big Spender Bonus",
-        description: "Orders $20-$50 earn 2 points per dollar",
+        description: "Orders PKR 20-PKR 50 earn 2 points per PKR",
         eventType: "purchase",
         perItem: false,
         formulaGroups: [
@@ -168,7 +168,7 @@ export async function POST() {
       },
       {
         name: "High-Value Purchase Reward",
-        description: "Earn 3 points per dollar on orders $50+",
+        description: "Earn 3 points per PKR on orders PKR 50+",
         eventType: "purchase",
         perItem: false,
         formulaGroups: [
@@ -221,6 +221,16 @@ export async function POST() {
         formulaGroups: [flat(10)],
         pointsExpireAfterDays: null,
       },
+      {
+        name: "Visit Punch Card",
+        description: "Every 5th visit earns a 50-point bonus",
+        eventType: "visit",
+        perItem: false,
+        formulaGroups: [
+          flat(50, rg([{ field: "visitCount", operator: "in", value: [5, 10, 15, 20] }])),
+        ],
+        pointsExpireAfterDays: null,
+      },
     ];
 
     const rules = [];
@@ -262,19 +272,29 @@ export async function POST() {
       insertedCustomers.push(row);
     }
 
-    // --- Rewards ---
-    const rewards = await db
-      .insert(redemptionRewards)
-      .values(
-        [
-          { name: "Free Beverage", pointsCost: 500, inventoryLimit: 1000, details: { discountType: "fixed", amount: 5 } },
-          { name: "10% Off Discount", pointsCost: 300, inventoryLimit: null, details: { discountType: "percent", percent: 10, description: "10% off your next purchase" } },
-          { name: "$10 Store Credit", pointsCost: 1000, inventoryLimit: null, details: { discountType: "fixed", amount: 10, description: "$10 off your next purchase" } },
-          { name: "$25 Gift Card", pointsCost: 2500, inventoryLimit: null, details: { discountType: "fixed", amount: 25, description: "$25 off your next purchase" } },
-          { name: "Merchandise Item", pointsCost: 1000, inventoryLimit: 200, details: { discountType: "fixed", amount: 15, description: "Any merchandise item up to $15" } },
-        ].map((r) => ({ tenantId: tenant.id, active: true, redeemedCount: 0, ...r })),
-      )
-      .returning();
+    // --- Automatic redemption rules ---
+    await db.insert(redemptionRules).values([
+      {
+        tenantId: tenant.id,
+        name: "Ten Percent Off",
+        description: "Automatically apply 10% off to eligible orders",
+        discountType: "percent",
+        discountValue: "10",
+        pointsCost: 300,
+        priority: 10,
+        conditions: { combinator: "and", rules: [{ field: "orderAmount", operator: ">=", value: 10 }] },
+      },
+      {
+        tenantId: tenant.id,
+        name: "Five Dollar Welcome Discount",
+        description: "Apply PKR 5.00 off orders of PKR 25.00 or more",
+        discountType: "fixed",
+        discountValue: "5",
+        pointsCost: 500,
+        priority: 5,
+        conditions: { combinator: "and", rules: [{ field: "orderAmount", operator: ">=", value: 25 }] },
+      },
+    ]);
 
     const [espresso, cappuccino, latte, croissant, muffin, avocado, burrito, beans, mug, coldBrew] =
       insertedProducts;
@@ -395,11 +415,19 @@ export async function POST() {
       applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[6].id, points: 500, description: "Opening balance" }),
     ]);
 
-    // --- Redeem a few rewards ---
-    const [freeBeverage, tenPercentOff, , , merch] = rewards;
-    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[0].id, rewardId: freeBeverage.id, description: "Free beverage redemption" });
-    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[1].id, rewardId: tenPercentOff.id, description: "10% off discount redemption" });
-    await applyRedeem({ tenantId: tenant.id, customerId: insertedCustomers[3].id, rewardId: merch.id, description: "Merchandise redemption" });
+    // --- Visits (QR punch card): Sarah checks in on 5 distinct days, hitting the
+    //    5th-visit bonus. Client supplies a distinct eventKey per day (the portal
+    //    derives visit:{customer}:{date}, one stamp per day).
+    const sarah = insertedCustomers[0];
+    for (let d = 5; d >= 1; d--) {
+      const day = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+      await event(
+        sarah.id,
+        "visit",
+        { locationId: "downtown", checkedInAt: `${day}T10:00:00Z` },
+        `visit:${sarah.id}:${day}`,
+      );
+    }
 
     // Idempotency sanity
     const replay = await event(

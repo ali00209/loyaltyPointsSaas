@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { normalizePakistaniMobile } from "./phone";
 import {
   buildStructuredFormula,
   conditionsMatch,
@@ -36,6 +37,19 @@ function rule(partial: Partial<EarnRuleConfig> = {}): EarnRuleConfig {
     ...partial,
   };
 }
+
+describe("normalizePakistaniMobile", () => {
+  it("normalizes local and international Pakistani mobile numbers", () => {
+    expect(normalizePakistaniMobile("0300-1234567")).toBe("+923001234567");
+    expect(normalizePakistaniMobile("+92 300 1234567")).toBe("+923001234567");
+    expect(normalizePakistaniMobile("00923001234567")).toBe("+923001234567");
+  });
+
+  it("rejects non-Pakistani or malformed numbers", () => {
+    expect(normalizePakistaniMobile("0300123456")).toBeNull();
+    expect(normalizePakistaniMobile("+14155550101")).toBeNull();
+  });
+});
 
 describe("parseExpression", () => {
   it("parses arithmetic with precedence", () => {
@@ -427,6 +441,10 @@ describe("deriveEventKey", () => {
   it("derives referral keys from referrer and referred ids", () => {
     expect(deriveEventKey("referral", "r1", { referredCustomerId: "c2" })).toBe("referral:r1:c2");
   });
+
+  it("derives a once-per-day visit key per customer", () => {
+    expect(deriveEventKey("visit", "c1", {})).toMatch(/^visit:c1:\d{4}-\d{2}-\d{2}$/);
+  });
 });
 
 describe("validateEventPayload", () => {
@@ -455,11 +473,21 @@ describe("validateEventPayload", () => {
       validateEventPayload("review", { purchaseId: "e1", productId: "p1", rating: 9 }),
     ).toThrow(/1–5/);
   });
+
+  it("accepts a bare visit with optional locationId/checkedInAt", () => {
+    expect(() => validateEventPayload("visit", {})).not.toThrow();
+    expect(() => validateEventPayload("visit", { locationId: "downtown", checkedInAt: "2026-01-01T10:00:00Z" })).not.toThrow();
+  });
+
+  it("rejects invalid visit locationId", () => {
+    expect(() => validateEventPayload("visit", { locationId: 42 })).toThrow(/locationId/);
+  });
 });
 
 describe("eventLabel", () => {
   it("labels known types and falls back to the raw type", () => {
     expect(eventLabel("purchase")).toBe("Purchase");
+    expect(eventLabel("visit")).toBe("Visit");
     expect(eventLabel("nope")).toBe("nope");
   });
 });

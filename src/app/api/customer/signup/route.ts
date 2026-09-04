@@ -1,27 +1,34 @@
-import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { customers, tenants } from "@/db/schema";
-import { createCustomerToken, hashPassword } from "@/lib/auth";
+import { customers } from "@/db/schema";
+import { requirePortalTenant } from "@/lib/api-guard";
+import {
+  createCustomerToken,
+  hashPassword,
+  normalizePakistaniMobile,
+} from "@/lib/auth";
 import { applyEvent } from "@/lib/points";
 import { CustomerSignupSchema, parseBody } from "@/lib/validations";
-import { eq, and } from "drizzle-orm";
+import { and, eq, or, SQL } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, CustomerSignupSchema);
   if (parsed.error) return parsed.error;
-  const { slug, name, email, password, ref } = parsed.data;
-
-  const [tenant] = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.slug, slug.toLowerCase()))
-    .limit(1);
-
-  if (!tenant) {
-    return NextResponse.json({ error: "Program not found" }, { status: 404 });
+  const { name, email, phone, password, ref } = parsed.data;
+  const tenantGuard = await requirePortalTenant();
+  if ("error" in tenantGuard) return tenantGuard.error;
+  const { tenantId } = tenantGuard;
+  const normalizedPhone = phone ? normalizePakistaniMobile(phone) : null;
+  if (phone && !normalizedPhone) {
+    return NextResponse.json(
+      { error: "Invalid Pakistani mobile number" },
+      { status: 400 },
+    );
   }
-  if (tenant.suspended) {
-    return NextResponse.json({ error: "This loyalty program is suspended" }, { status: 403 });
+  let condition: SQL[] = [];
+
+  if (email?.trim()) {
+    condition.push(eq(customers.email, email.toLowerCase().trim()));
   }
 
   const existing = await db
@@ -29,15 +36,36 @@ export async function POST(req: NextRequest) {
     .from(customers)
     .where(
       and(
-        eq(customers.tenantId, tenant.id),
-        eq(customers.email, email.toLowerCase().trim()),
+        eq(customers.tenantId, tenantId),
+        or(...condition, eq(customers.phone, normalizedPhone!)),
       ),
     )
     .limit(1);
 
   if (existing.length > 0) {
-    return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
+    return NextResponse.json(
+      { error: "An account with this email or phone num already exists" },
+      { status: 409 },
+    );
   }
+  // if (normalizedPhone) {
+  //   const [existingPhone] = await db
+  //     .select({ id: customers.id })
+  //     .from(customers)
+  //     .where(
+  //       and(
+  //         eq(customers.tenantId, tenant.id),
+  //         eq(customers.phone, normalizedPhone),
+  //       ),
+  //     )
+  //     .limit(1);
+  //   if (existingPhone) {
+  //     return NextResponse.json(
+  //       { error: "An account with this phone already exists" },
+  //       { status: 409 },
+  //     );
+  //   }
+  // }
 
   const referrer = ref
     ? (
@@ -46,7 +74,7 @@ export async function POST(req: NextRequest) {
           .from(customers)
           .where(
             and(
-              eq(customers.tenantId, tenant.id),
+              eq(customers.tenantId, tenantId),
               eq(customers.referralCode, ref),
             ),
           )
@@ -60,9 +88,10 @@ export async function POST(req: NextRequest) {
     const [customer] = await tx
       .insert(customers)
       .values({
-        tenantId: tenant.id,
+        tenantId,
         name,
-        email: email.toLowerCase().trim(),
+        email: email && email?.toLowerCase().trim(),
+        phone: normalizedPhone!,
         passwordHash: await hashPassword(password),
         referralCode,
       })
@@ -70,7 +99,7 @@ export async function POST(req: NextRequest) {
 
     const signup = await applyEvent(
       {
-        tenantId: tenant.id,
+        tenantId,
         customerId: customer.id,
         eventType: "customer_signup",
         payload: {},
@@ -82,7 +111,7 @@ export async function POST(req: NextRequest) {
     if (referrer && referrer.id !== customer.id) {
       const refResult = await applyEvent(
         {
-          tenantId: tenant.id,
+          tenantId,
           customerId: referrer.id,
           eventType: "referral",
           payload: { referredCustomerId: customer.id },
@@ -95,7 +124,7 @@ export async function POST(req: NextRequest) {
     return { customer, signup, referralEarned };
   });
 
-  const token = createCustomerToken(result.customer.id, tenant.id);
+  const token = createCustomerToken(result.customer.id, tenantId);
   const response = NextResponse.json(
     {
       customer: {

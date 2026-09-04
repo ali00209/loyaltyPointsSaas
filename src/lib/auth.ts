@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { db } from "@/db";
 import { apiKeys, customers, tenants, users } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+export { normalizePakistaniMobile } from "@/lib/phone";
 
 const JWT_SECRET = process.env.JWT_SECRET || "loyalty-points-secret-key-change-in-prod";
 
@@ -13,10 +14,14 @@ export const API_KEY_PREFIX = "loy_";
 export type UserRole = "admin" | "owner";
 
 interface TokenPayload {
-  kind: "user" | "customer";
+  kind: "user" | "customer" | "portal";
   userId?: string;
   customerId?: string;
   tenantId?: string;
+}
+
+export function createPortalTenantToken(tenantId: string): string {
+  return jwt.sign({ kind: "portal", tenantId }, JWT_SECRET, { expiresIn: "1d" });
 }
 
 export interface CurrentUser {
@@ -29,6 +34,7 @@ export interface CurrentUser {
   tenant: {
     id: string;
     name: string;
+    slug?: string | null;
     brandingConfig: Record<string, unknown>;
     suspended: boolean;
   } | null;
@@ -76,6 +82,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       createdAt: users.createdAt,
       tenantId_: tenants.id,
       tenantName: tenants.name,
+      tenantSlug: tenants.slug,
       tenantBrandingConfig: tenants.brandingConfig,
       tenantSuspended: tenants.suspended,
     })
@@ -97,6 +104,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       ? {
           id: row.tenantId_,
           name: row.tenantName,
+          slug: row.tenantSlug,
           brandingConfig: (row.tenantBrandingConfig as Record<string, unknown>) ?? {},
           suspended: row.tenantSuspended ?? false,
         }
@@ -193,6 +201,51 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   };
 }
 
+export async function getCustomerById(
+  customerId: string,
+  tenantId: string,
+): Promise<CurrentCustomer | null> {
+  const [row] = await db
+    .select({
+      id: customers.id,
+      tenantId: customers.tenantId,
+      name: customers.name,
+      email: customers.email,
+      phone: customers.phone,
+      referralCode: customers.referralCode,
+      currentBalance: customers.currentBalance,
+      isActive: customers.isActive,
+      tenantId_: tenants.id,
+      tenantName: tenants.name,
+      tenantSlug: tenants.slug,
+      tenantBrandingConfig: tenants.brandingConfig,
+      tenantSuspended: tenants.suspended,
+    })
+    .from(customers)
+    .innerJoin(tenants, eq(customers.tenantId, tenants.id))
+    .where(and(eq(customers.id, customerId), eq(customers.tenantId, tenantId)))
+    .limit(1);
+
+  if (!row) return null;
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    referralCode: row.referralCode,
+    currentBalance: row.currentBalance,
+    isActive: row.isActive,
+    tenant: {
+      id: row.tenantId_,
+      name: row.tenantName,
+      slug: row.tenantSlug,
+      brandingConfig: (row.tenantBrandingConfig as Record<string, unknown>) ?? {},
+      suspended: row.tenantSuspended ?? false,
+    },
+  };
+}
+
 export function requireCustomer(customer: CurrentCustomer | null): CurrentCustomer {
   if (!customer) throw unauthorized();
   if (!customer.isActive) throw forbidden("Account is disabled");
@@ -209,6 +262,7 @@ export function generateApiKey(): string {
 export function hashApiKey(rawKey: string): string {
   return createHash("sha256").update(rawKey).digest("hex");
 }
+
 
 export interface ApiKeyContext {
   tenantId: string;

@@ -4,10 +4,11 @@ import {
   customers,
   earningRules,
   pointTransactions,
-  redemptionRewards,
+  redemptionRules,
+  redemptionCheckouts,
 } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
-import { eq, desc, sql } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 
 export async function GET() {
   const guard = await requireOwnerTenant();
@@ -22,7 +23,7 @@ export async function GET() {
     .from(customers)
     .where(eq(customers.tenantId, tenantId));
 
-  const [rewardStats] = await db
+  const [redemptionStats] = await db
     .select({
       count: sql<number>`coalesce(sum(case when ${pointTransactions.transactionType} = 'redeem' then 1 else 0 end), 0)::int`,
     })
@@ -66,15 +67,17 @@ export async function GET() {
     .orderBy(desc(customers.totalPointsEarned))
     .limit(5);
 
-  const topRewards = await db
+  const topRedemptionRules = await db
     .select({
-      id: redemptionRewards.id,
-      name: redemptionRewards.name,
-      redeemedCount: redemptionRewards.redeemedCount,
+      id: redemptionRules.id,
+      name: redemptionRules.name,
+      redeemedCount: sql<number>`count(*)::int`,
     })
-    .from(redemptionRewards)
-    .where(eq(redemptionRewards.tenantId, tenantId))
-    .orderBy(desc(redemptionRewards.redeemedCount))
+    .from(redemptionCheckouts)
+    .innerJoin(redemptionRules, eq(redemptionCheckouts.redemptionRuleId, redemptionRules.id))
+    .where(and(eq(redemptionCheckouts.tenantId, tenantId), eq(redemptionCheckouts.status, "finalized")))
+    .groupBy(redemptionRules.id, redemptionRules.name)
+    .orderBy(desc(sql`count(*)`))
     .limit(5);
 
   return NextResponse.json({
@@ -83,11 +86,11 @@ export async function GET() {
       totalPoints: customerStats.totalPoints,
       totalEarned: txStats.totalEarned,
       totalRedeemed: txStats.totalRedeemed,
-      totalRewards: rewardStats.count,
+      totalRewards: redemptionStats.count,
       activeRules: ruleStats.activeCount,
     },
     recentTransactions,
     topCustomers,
-    topRewards,
+    topRewards: topRedemptionRules,
   });
 }

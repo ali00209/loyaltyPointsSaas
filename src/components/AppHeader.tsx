@@ -30,7 +30,7 @@ export default function AppHeader({
   description: string;
   showButton: boolean;
   customButton?: React.ReactElement;
-  onClick: () => void;
+  onClick?: () => void;
   showSearch?: boolean;
   search?: string;
   setSearch?: (search: string) => void;

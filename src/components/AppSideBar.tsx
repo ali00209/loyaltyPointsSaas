@@ -8,9 +8,9 @@ import {
   ArrowLeftRight,
   LogOut,
   Star,
-  Gift,
   Building2,
   Settings,
+  QrCode,
 } from "lucide-react";
 import type { IconType } from "@astryxdesign/core/Icon";
 import {
@@ -54,10 +54,10 @@ const ownerNavItems = [
     selectedIcon: fillIcon(ShieldCheck),
   },
   {
-    label: "Rewards",
-    href: "/dashboard/rewards",
-    icon: Gift,
-    selectedIcon: fillIcon(Gift),
+    label: "Redemption Rules",
+    href: "/dashboard/redemption-rules",
+    icon: ShieldCheck,
+    selectedIcon: fillIcon(ShieldCheck),
   },
   {
     label: "Customers",
@@ -70,6 +70,12 @@ const ownerNavItems = [
     href: "/dashboard/transactions",
     icon: ArrowLeftRight,
     selectedIcon: fillIcon(ArrowLeftRight),
+  },
+  {
+    label: "Store QR",
+    href: "/dashboard/qr",
+    icon: QrCode,
+    selectedIcon: fillIcon(QrCode),
   },
   {
     label: "Settings",

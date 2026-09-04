@@ -31,6 +31,14 @@ export interface PortalOverview {
   summary: { currentBalance: number; totalPointsEarned: number };
   referral: { code: string | null; link: string };
   activity: PortalActivity[];
+  redemptions: {
+    checkoutId: string;
+    orderId: string | null;
+    discountAmount: number;
+    pointsCost: number;
+    status: "reserved" | "finalized" | "released" | "refunded";
+    createdAt: string;
+  }[];
 }
 
 export interface PortalPurchaseItem {
@@ -48,6 +56,11 @@ export interface PortalPurchase {
   orderAmount: number;
   items: PortalPurchaseItem[];
   occurredAt: string;
+  appliedBenefit: {
+    discountAmount: number;
+    pointsCost: number;
+    status: "reserved" | "finalized" | "released" | "refunded";
+  } | null;
 }
 
 export interface PortalAuthCustomer {

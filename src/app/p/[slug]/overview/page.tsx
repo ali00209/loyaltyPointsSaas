@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeftRight, Copy, Gift, Mail, Share2 } from "lucide-react";
+import { ArrowLeftRight, Copy, Gift, Mail, MapPin, Share2 } from "lucide-react";
 import { VStack, HStack } from "@astryxdesign/core/Layout";
 import { Center } from "@astryxdesign/core/Center";
 import { Text, Heading } from "@astryxdesign/core/Text";
@@ -44,6 +44,7 @@ export default function OverviewPage() {
   const { data: overview, isLoading: overviewLoading } = usePortalOverview();
   const shareMutation = usePostPortalEvent();
   const newsletterMutation = usePostPortalEvent();
+  const checkInMutation = usePostPortalEvent();
   const [copied, setCopied] = useState(false);
 
   if (customerLoading || overviewLoading) {
@@ -118,6 +119,25 @@ export default function OverviewPage() {
     }
   };
 
+  const handleCheckIn = async () => {
+    try {
+      const result = await checkInMutation.mutateAsync({
+        eventType: "visit",
+        payload: {},
+      });
+      if (result.totalAwarded > 0) {
+        showToast({ type: "info", body: `Checked in! +${result.totalAwarded} pts` });
+      } else {
+        showToast({ type: "info", body: "Already checked in today" });
+      }
+    } catch (err) {
+      showToast({
+        type: "error",
+        body: err instanceof Error ? err.message : "Failed to check in",
+      });
+    }
+  };
+
   return (
     <VStack gap={6} hAlign="stretch">
       <VStack gap={1}>
@@ -183,6 +203,13 @@ export default function OverviewPage() {
         <VStack gap={3} hAlign="stretch">
           <Heading level={2}>Earn more points</Heading>
           <HStack gap={3} wrap="wrap">
+            <Button
+              label="Check in"
+              variant="primary"
+              icon={<MapPin size="1em" />}
+              isLoading={checkInMutation.isPending}
+              onClick={handleCheckIn}
+            />
             <Button
               label="Share on social"
               variant="secondary"

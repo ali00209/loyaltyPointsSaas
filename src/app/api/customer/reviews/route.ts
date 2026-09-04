@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { events } from "@/db/schema";
-import { requireCustomerSession } from "@/lib/api-guard";
+import { requireCustomerAccess } from "@/lib/api-guard";
 import { applyEvent, PointsError } from "@/lib/points";
 import { validateEventPayload } from "@/lib/rules";
 import { ReviewSchema, parseBody } from "@/lib/validations";
 import { eq, and } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
-  const guard = await requireCustomerSession();
+  const guard = await requireCustomerAccess(new URL(req.url).searchParams);
   if ("error" in guard) return guard.error;
   const { customer } = guard;
 

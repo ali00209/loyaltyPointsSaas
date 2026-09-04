@@ -34,15 +34,13 @@ export default function AppThemeSetting() {
 
   return (
     <Card>
-      <Stack direction="vertical" gap={2}>
+      <Stack direction="vertical" gap={5}>
         <Stack direction="vertical" gap={2}>
-          <Heading level={2}>Appearance Settings</Heading>
-          <Text size="sm">
-            Customize how your loyalty platform looks and feels.
-          </Text>
+          <Heading level={1}>Appearance Settings</Heading>
+          <Text>Customize how your loyalty platform looks and feels.</Text>
         </Stack>
 
-        <Heading level={3}>Mode</Heading>
+        <Heading level={2}>Theme Mode</Heading>
         <Grid columns={3} gap={5}>
           {modes.map(({ id, label, icon }) => {
             const isSelected = mode === id;
@@ -53,6 +51,10 @@ export default function AppThemeSetting() {
                 isSelected={isSelected}
                 onChange={() => setMode(id)}
                 role="button"
+                height={150}
+                style={{
+                  alignContent: "center",
+                }}
               >
                 <Stack direction="vertical" align="center">
                   <Text size="xl">{icon}</Text>
@@ -67,7 +69,7 @@ export default function AppThemeSetting() {
         <Divider />
 
         <Stack direction="vertical" align="stretch" gap={2}>
-          <Heading level={4}>Theme Color Palette</Heading>
+          <Heading level={2}>Theme Color Palette</Heading>
 
           <Grid columns={3} gap={5}>
             {themeOptions.map((t) => {
@@ -79,21 +81,19 @@ export default function AppThemeSetting() {
                   isSelected={isSelected}
                   onChange={() => setThemeName(t as ThemeName)}
                   role="button"
+                  height={150}
+                  style={{
+                    alignContent: "center",
+                  }}
                 >
                   <Stack direction="vertical" align="center">
                     <Text size="xl">{t}</Text>
-                    {/*<Text weight="medium">{t}</Text>*/}
                   </Stack>
                 </SelectableCard>
               );
             })}
           </Grid>
         </Stack>
-
-        {/* Footer note */}
-        {/*<Text variant="subtle" size="sm" align="center">
-          Changes apply instantly. Your preference is saved locally.
-        </Text>*/}
       </Stack>
     </Card>
   );

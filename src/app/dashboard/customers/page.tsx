@@ -111,8 +111,12 @@ export default function CustomersPage() {
         showFilter={false}
       />
 
-      {filtered.length === 0 ? (
-        <Card padding={8}>
+      <Table
+        data={filtered}
+        idKey="id"
+        hasHover
+        textOverflow="truncate"
+        emptyState={
           <EmptyState
             title="No customers found"
             description={
@@ -129,91 +133,84 @@ export default function CustomersPage() {
               ) : undefined
             }
           />
-        </Card>
-      ) : (
-        <Table
-          data={filtered}
-          idKey="id"
-          hasHover
-          textOverflow="truncate"
-          columns={[
-            {
-              key: "name",
-              header: "Customer",
-              renderCell: (c: Customer) => (
-                <HStack gap={2} vAlign="center">
-                  <Avatar name={c.name} size="sm" />
-                  <Text type="body" weight="medium">
-                    {c.name}
+        }
+        columns={[
+          {
+            key: "name",
+            header: "Customer",
+            renderCell: (c: Customer) => (
+              <HStack gap={2} vAlign="center">
+                <Avatar name={c.name} size="sm" />
+                <Text type="body" weight="medium">
+                  {c.name}
+                </Text>
+              </HStack>
+            ),
+          },
+          {
+            key: "contact",
+            header: "Contact",
+            renderCell: (c: Customer) => (
+              <VStack gap={0} hAlign="stretch">
+                {c.email && (
+                  <Text type="body" color="secondary" maxLines={1}>
+                    {c.email}
                   </Text>
-                </HStack>
-              ),
-            },
-            {
-              key: "contact",
-              header: "Contact",
-              renderCell: (c: Customer) => (
-                <VStack gap={0} hAlign="stretch">
-                  {c.email && (
-                    <Text type="body" color="secondary" maxLines={1}>
-                      {c.email}
-                    </Text>
-                  )}
-                  {c.phone && (
-                    <Text type="supporting" color="secondary" maxLines={1}>
-                      {c.phone}
-                    </Text>
-                  )}
-                  {!c.email && !c.phone && (
-                    <Text type="supporting" color="disabled">
-                      No contact info
-                    </Text>
-                  )}
-                </VStack>
-              ),
-            },
-            {
-              key: "totalPoints",
-              header: "Balance",
-              renderCell: (c: Customer) => (
-                <Text type="body" weight="medium" hasTabularNumbers>
-                  {c.currentBalance.toLocaleString()}
-                </Text>
-              ),
-            },
-            {
-              key: "lifetimePoints",
-              header: "Lifetime",
-              renderCell: (c: Customer) => (
-                <Text type="body" color="secondary" hasTabularNumbers>
-                  {c.totalPointsEarned.toLocaleString()}
-                </Text>
-              ),
-            },
-            {
-              key: "actions",
-              header: "Actions",
-              align: "center",
-              renderCell: (c: Customer) => (
-                <HStack gap={1} hAlign="center">
-                  <Button
-                    label="Edit"
-                    variant="primary"
-                    size="sm"
-                    onClick={() => openEdit(c)}
-                  />
-                  <Button
-                    label="Delete"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDelete(c)}
-                  />
-                </HStack>
-              ),
-            },
-          ]}
-        />
-      )}
+                )}
+                {c.phone && (
+                  <Text type="supporting" color="secondary" maxLines={1}>
+                    {c.phone}
+                  </Text>
+                )}
+                {!c.email && !c.phone && (
+                  <Text type="supporting" color="disabled">
+                    No contact info
+                  </Text>
+                )}
+              </VStack>
+            ),
+          },
+          {
+            key: "totalPoints",
+            header: "Balance",
+            renderCell: (c: Customer) => (
+              <Text type="body" weight="medium" hasTabularNumbers>
+                {c.currentBalance.toLocaleString()}
+              </Text>
+            ),
+          },
+          {
+            key: "lifetimePoints",
+            header: "Lifetime",
+            renderCell: (c: Customer) => (
+              <Text type="body" color="secondary" hasTabularNumbers>
+                {c.totalPointsEarned.toLocaleString()}
+              </Text>
+            ),
+          },
+          {
+            key: "actions",
+            header: "Actions",
+            align: "center",
+            renderCell: (c: Customer) => (
+              <HStack gap={1} hAlign="center">
+                <Button
+                  label="Edit"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => openEdit(c)}
+                />
+                <Button
+                  label="Delete"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDelete(c)}
+                />
+              </HStack>
+            ),
+          },
+        ]}
+      />
 
       <Dialog
         isOpen={showForm}

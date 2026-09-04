@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { resolveEventPrincipal } from "@/lib/api-guard";
+import { normalizePakistaniMobile } from "@/lib/phone";
 import { applyEvent, PointsError } from "@/lib/points";
 import {
   canPost,
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
     eventKey,
     customerId: bodyCustomerId,
     customerEmail,
+    customerPhone,
   } = parsed.data;
 
   const eventTypeKey = eventType as EventType;
@@ -52,21 +54,41 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const normalizedPhone =
+    customerPhone && normalizePakistaniMobile(customerPhone);
+
   let targetCustomerId = sessionCustomerId ?? "";
   if (kind === "owner" || kind === "apiKey") {
     targetCustomerId = bodyCustomerId ?? "";
-    if (typeof customerEmail === "string" && customerEmail) {
+    const identifiers: string[] = [];
+    if (typeof customerEmail === "string" && customerEmail.trim()) {
       const [byEmail] = await db
         .select({ id: customers.id })
         .from(customers)
         .where(
           and(
             eq(customers.tenantId, tenantId),
-            eq(customers.email, customerEmail),
+            eq(customers.email, customerEmail.trim().toLowerCase()),
           ),
         )
         .limit(1);
-      if (byEmail) targetCustomerId = byEmail.id;
+      if (!byEmail) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+      identifiers.push(byEmail.id);
+    }
+    if (normalizedPhone) {
+      const [byPhone] = await db
+        .select({ id: customers.id })
+        .from(customers)
+        .where(and(eq(customers.tenantId, tenantId), eq(customers.phone, normalizedPhone)))
+        .limit(1);
+      if (!byPhone) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+      identifiers.push(byPhone.id);
+    }
+    if (identifiers.length > 0) {
+      if (new Set(identifiers).size > 1) {
+        return NextResponse.json({ error: "Customer identifiers identify different customers" }, { status: 409 });
+      }
+      targetCustomerId = identifiers[0];
     }
     if (!targetCustomerId) {
       return NextResponse.json(

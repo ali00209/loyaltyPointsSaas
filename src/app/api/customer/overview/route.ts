@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { customers, earningRules, pointTransactions } from "@/db/schema";
-import { requireCustomerSession } from "@/lib/api-guard";
+import { customers, earningRules, pointTransactions, redemptionCheckouts } from "@/db/schema";
+import { requireCustomerAccess } from "@/lib/api-guard";
 import { eventLabel } from "@/lib/rules";
 import { eq, and, desc } from "drizzle-orm";
 
-export async function GET() {
-  const guard = await requireCustomerSession();
+export async function GET(req: NextRequest) {
+  const guard = await requireCustomerAccess(new URL(req.url).searchParams);
   if ("error" in guard) return guard.error;
   const { customer } = guard;
 
@@ -19,7 +19,8 @@ export async function GET() {
     .where(eq(customers.id, customer.id))
     .limit(1);
 
-  const activity = await db
+  const [activity, redemptions] = await Promise.all([
+    db
     .select({
       id: pointTransactions.id,
       transactionType: pointTransactions.transactionType,
@@ -38,7 +39,24 @@ export async function GET() {
       ),
     )
     .orderBy(desc(pointTransactions.createdAt))
-    .limit(20);
+    .limit(20),
+    db
+      .select({
+        checkoutId: redemptionCheckouts.checkoutId,
+        orderId: redemptionCheckouts.orderId,
+        discountAmount: redemptionCheckouts.discountAmount,
+        pointsCost: redemptionCheckouts.pointsCost,
+        status: redemptionCheckouts.status,
+        createdAt: redemptionCheckouts.createdAt,
+      })
+      .from(redemptionCheckouts)
+      .where(and(
+        eq(redemptionCheckouts.customerId, customer.id),
+        eq(redemptionCheckouts.tenantId, customer.tenantId),
+      ))
+      .orderBy(desc(redemptionCheckouts.createdAt))
+      .limit(20),
+  ]);
 
   return NextResponse.json({
     summary: {
@@ -57,5 +75,13 @@ export async function GET() {
         source,
       };
     }),
+    redemptions: redemptions.map((r) => ({
+      checkoutId: r.checkoutId,
+      orderId: r.orderId,
+      discountAmount: Number(r.discountAmount),
+      pointsCost: r.pointsCost,
+      status: r.status,
+      createdAt: r.createdAt,
+    })),
   });
 }

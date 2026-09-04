@@ -1,5 +1,5 @@
-import { client } from "./client";
 import type { Customer, CustomerInput } from "@/types";
+import { client } from "./client";
 
 export async function fetchCustomers(): Promise<Customer[]> {
   const { data } = await client.get<{ customers: Customer[] }>("/customers");
@@ -7,7 +7,10 @@ export async function fetchCustomers(): Promise<Customer[]> {
 }
 
 export async function createCustomer(input: CustomerInput): Promise<Customer> {
-  const { data } = await client.post<{ customer: Customer }>("/customers", input);
+  const { data } = await client.post<{ customer: Customer }>(
+    "/customers",
+    input,
+  );
   return data.customer;
 }
 

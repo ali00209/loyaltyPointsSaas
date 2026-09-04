@@ -1,15 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { events, products } from "@/db/schema";
-import { requireCustomerSession } from "@/lib/api-guard";
+import { events, products, redemptionCheckouts } from "@/db/schema";
+import { requireCustomerAccess } from "@/lib/api-guard";
 import { eq, and, desc, inArray } from "drizzle-orm";
 
-export async function GET() {
-  const guard = await requireCustomerSession();
+export async function GET(req: NextRequest) {
+  const guard = await requireCustomerAccess(new URL(req.url).searchParams);
   if ("error" in guard) return guard.error;
   const { customer } = guard;
 
-  const [purchases, reviews, catalog] = await Promise.all([
+  const [purchases, reviews, catalog, checkouts] = await Promise.all([
     db
       .select()
       .from(events)
@@ -36,6 +36,13 @@ export async function GET() {
       .select({ id: products.id, name: products.name })
       .from(products)
       .where(eq(products.tenantId, customer.tenantId)),
+    db
+      .select()
+      .from(redemptionCheckouts)
+      .where(and(
+        eq(redemptionCheckouts.customerId, customer.id),
+        eq(redemptionCheckouts.tenantId, customer.tenantId),
+      )),
   ]);
 
   const reviewsByProduct = new Map(reviews.map((r) => [String(r.payload.productId), r]));
@@ -67,6 +74,23 @@ export async function GET() {
       orderAmount: Number(purchase.payload.orderAmount ?? 0),
       items,
       occurredAt: purchase.occurredAt,
+      appliedBenefit: checkouts.find((checkout) =>
+        checkout.orderId === String(purchase.payload.orderNumber ?? "") ||
+        checkout.checkoutId === String(purchase.payload.orderNumber ?? ""),
+      ) ? {
+        discountAmount: Number(checkouts.find((checkout) =>
+          checkout.orderId === String(purchase.payload.orderNumber ?? "") ||
+          checkout.checkoutId === String(purchase.payload.orderNumber ?? ""),
+        )!.discountAmount),
+        pointsCost: checkouts.find((checkout) =>
+          checkout.orderId === String(purchase.payload.orderNumber ?? "") ||
+          checkout.checkoutId === String(purchase.payload.orderNumber ?? ""),
+        )!.pointsCost,
+        status: checkouts.find((checkout) =>
+          checkout.orderId === String(purchase.payload.orderNumber ?? "") ||
+          checkout.checkoutId === String(purchase.payload.orderNumber ?? ""),
+        )!.status,
+      } : null,
     };
   });
 

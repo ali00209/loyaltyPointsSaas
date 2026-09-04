@@ -1,57 +1,63 @@
-import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { customers, tenants } from "@/db/schema";
-import { createCustomerToken, verifyPassword } from "@/lib/auth";
+import { customers } from "@/db/schema";
+import { requirePortalTenant } from "@/lib/api-guard";
+import {
+  createCustomerToken,
+  normalizePakistaniMobile,
+  verifyPassword,
+} from "@/lib/auth";
 import { CustomerLoginSchema, parseBody } from "@/lib/validations";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, CustomerLoginSchema);
   if (parsed.error) return parsed.error;
-  const { slug, email, password } = parsed.data;
+  const { email, phone, password } = parsed.data;
+  const tenantGuard = await requirePortalTenant();
+  if ("error" in tenantGuard) return tenantGuard.error;
+  const { tenantId } = tenantGuard;
 
-  const [tenant] = await db
-    .select()
-    .from(tenants)
-    .where(eq(tenants.slug, slug.toLowerCase()))
-    .limit(1);
-
-  if (!tenant) {
-    return NextResponse.json({ error: "Program not found" }, { status: 404 });
-  }
-  if (tenant.suspended) {
-    return NextResponse.json({ error: "This loyalty program is suspended" }, { status: 403 });
-  }
-
-  const [customer] = await db
+  const candidates = await db
     .select()
     .from(customers)
-    .where(
-      and(
-        eq(customers.tenantId, tenant.id),
-        eq(customers.email, email.toLowerCase().trim()),
-      ),
-    )
-    .limit(1);
+    .where(eq(customers.tenantId, tenantId));
+  const normalizedPhone = phone ? normalizePakistaniMobile(phone) : null;
+  const customer = candidates.find((candidate) =>
+    email
+      ? candidate.email?.toLowerCase() === email.toLowerCase().trim()
+      : normalizedPhone !== null &&
+        normalizePakistaniMobile(candidate.phone ?? "") === normalizedPhone,
+  );
 
   if (!customer || !customer.passwordHash) {
-    return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Invalid email or password" },
+      { status: 401 },
+    );
   }
 
   const valid = await verifyPassword(password, customer.passwordHash);
   if (!valid) {
-    return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Invalid email or password" },
+      { status: 401 },
+    );
   }
   if (!customer.isActive) {
-    return NextResponse.json({ error: "This account is disabled" }, { status: 403 });
+    return NextResponse.json(
+      { error: "This account is disabled" },
+      { status: 403 },
+    );
   }
 
-  const token = createCustomerToken(customer.id, tenant.id);
+  const token = createCustomerToken(customer.id, tenantId);
   const response = NextResponse.json({
     customer: {
       id: customer.id,
       name: customer.name,
       email: customer.email,
+      phone: customer.phone,
       referralCode: customer.referralCode,
       currentBalance: customer.currentBalance,
     },

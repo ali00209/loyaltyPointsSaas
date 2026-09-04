@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { customers } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
+import { normalizePakistaniMobile } from "@/lib/auth";
 import { CreateCustomerSchema, UpdateCustomerSchema, parseBody } from "@/lib/validations";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, ne } from "drizzle-orm";
 
 export async function GET() {
   const guard = await requireOwnerTenant();
@@ -27,6 +28,17 @@ export async function POST(req: NextRequest) {
   const parsed = await parseBody(req, CreateCustomerSchema);
   if (parsed.error) return parsed.error;
   const { name, email, phone } = parsed.data;
+  const normalizedPhone = phone ? normalizePakistaniMobile(phone) ?? phone : null;
+  if (normalizedPhone) {
+    const [existingPhone] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(and(eq(customers.tenantId, tenantId), eq(customers.phone, normalizedPhone)))
+      .limit(1);
+    if (existingPhone) {
+      return NextResponse.json({ error: "Phone number already exists in this program" }, { status: 409 });
+    }
+  }
 
   const [customer] = await db
     .insert(customers)
@@ -34,7 +46,7 @@ export async function POST(req: NextRequest) {
       tenantId,
       name,
       email: email || null,
-      phone: phone || null,
+      phone: normalizedPhone ?? "",
     })
     .returning();
 
@@ -53,7 +65,25 @@ export async function PUT(req: NextRequest) {
   const setValues: Record<string, unknown> = {};
   if (name !== undefined) setValues.name = name;
   if (email !== undefined) setValues.email = email || null;
-  if (phone !== undefined) setValues.phone = phone || null;
+  if (phone !== undefined) {
+    setValues.phone = phone ? normalizePakistaniMobile(phone) ?? phone : null;
+  }
+  if (typeof setValues.phone === "string") {
+    const [existingPhone] = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(
+        and(
+          eq(customers.tenantId, tenantId),
+          eq(customers.phone, setValues.phone),
+          ne(customers.id, id),
+        ),
+      )
+      .limit(1);
+    if (existingPhone) {
+      return NextResponse.json({ error: "Phone number already exists in this program" }, { status: 409 });
+    }
+  }
 
   const [customer] = await db
     .update(customers)

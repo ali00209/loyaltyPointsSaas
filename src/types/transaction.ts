@@ -11,6 +11,8 @@ export interface Transaction extends Record<string, unknown> {
   ruleName: string | null;
   rewardId: string | null;
   rewardName: string | null;
+  redemptionRuleId?: string | null;
+  redemptionRuleName?: string | null;
   eventId: string | null;
   description: string | null;
   orderAmount: string | null;

@@ -1055,6 +1055,7 @@
       "schema": "public",
       "values": [
         "purchase",
+        "visit",
         "review",
         "referral",
         "newsletter_signup",

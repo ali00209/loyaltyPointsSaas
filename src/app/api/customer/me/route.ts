@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { requireCustomerSession } from "@/lib/api-guard";
+import { NextRequest, NextResponse } from "next/server";
+import { requireCustomerAccess } from "@/lib/api-guard";
 
-export async function GET() {
-  const guard = await requireCustomerSession();
+export async function GET(req: NextRequest) {
+  const guard = await requireCustomerAccess(new URL(req.url).searchParams);
   if ("error" in guard) return guard.error;
   const { customer } = guard;
 

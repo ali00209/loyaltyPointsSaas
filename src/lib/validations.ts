@@ -3,10 +3,7 @@ import { z } from "zod";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-const email = z
-  .string()
-  .min(1, "Email is required")
-  .email("Invalid email address");
+const email = z.email("Invalid email address");
 const password = z
   .string()
   .min(1, "Password is required")
@@ -35,19 +32,27 @@ export const RegisterSchema = z.object({
 
 // ─── Customer ────────────────────────────────────────────────────────────────
 
-export const CustomerLoginSchema = z.object({
-  slug: z.string().min(1, "Program slug is required"),
-  email,
-  password: z.string().min(1, "Password is required"),
-});
+export const CustomerLoginSchema = z
+  .object({
+    email: email.optional(),
+    phone: z.string().max(30).optional(),
+    password: z.string().min(1, "Password is required"),
+  })
+  .strict()
+  .refine((value) => Boolean(value.email) !== Boolean(value.phone), {
+    message: "Provide exactly one of email or phone",
+    path: ["email"],
+  });
 
-export const CustomerSignupSchema = z.object({
-  slug: z.string().min(1, "Program slug is required"),
-  name,
-  email,
-  password,
-  ref: z.string().max(50).optional(),
-});
+export const CustomerSignupSchema = z
+  .object({
+    name,
+    email: z.email().optional(),
+    phone: z.string().max(30).optional(),
+    password,
+    ref: z.string().max(50).optional(),
+  })
+  .strict();
 
 export const ReviewSchema = z.object({
   purchaseId: uuid,
@@ -65,7 +70,6 @@ export const ReviewSchema = z.object({
 export const CreateCustomerSchema = z.object({
   name,
   email: z
-    .string()
     .email("Invalid email address")
     .optional()
     .or(z.literal(""))
@@ -82,7 +86,6 @@ export const UpdateCustomerSchema = z.object({
   id: uuid,
   name: name.optional(),
   email: z
-    .string()
     .email("Invalid email address")
     .optional()
     .or(z.literal(""))
@@ -126,7 +129,10 @@ export const CreateRewardSchema = z.object({
     .int()
     .positive("Points cost must be greater than 0"),
   discountType: DiscountType.optional().default("fixed"),
-  discountValue: z.coerce.number().positive("Discount value must be greater than 0").optional(),
+  discountValue: z.coerce
+    .number()
+    .positive("Discount value must be greater than 0")
+    .optional(),
   inventoryLimit: z.coerce.number().int().nonnegative().nullable().optional(),
   description: z.string().max(500).optional(),
 });
@@ -140,11 +146,174 @@ export const UpdateRewardSchema = z.object({
     .positive("Points cost must be greater than 0")
     .optional(),
   discountType: DiscountType.optional(),
-  discountValue: z.coerce.number().positive("Discount value must be greater than 0").optional(),
+  discountValue: z.coerce
+    .number()
+    .positive("Discount value must be greater than 0")
+    .optional(),
   inventoryLimit: z.coerce.number().int().nonnegative().nullable().optional(),
   description: z.string().max(500).optional(),
   active: z.boolean().optional(),
 });
+
+// ─── Owner: Automatic redemption rules ──────────────────────────────────────
+
+export const RedemptionRuleConditionsSchema: z.ZodType = z.lazy(() =>
+  z.object({
+    combinator: z.enum(["and", "or"]),
+    rules: z.array(
+      z.union([
+        z.object({
+          field: z.string(),
+          operator: z.string(),
+          value: z.unknown(),
+        }),
+        RedemptionRuleConditionsSchema,
+      ]),
+    ),
+  }),
+);
+
+const redemptionBase = {
+  name,
+  description: z.string().max(500).nullable().optional(),
+  redemptionMode: z.enum(["fixed", "per_point"]).default("fixed"),
+  discountType: z.enum(["fixed", "percent"]),
+  discountValue: z.coerce.number().positive(),
+  pointsCost: z.coerce.number().int().positive(),
+  priority: z.coerce.number().int().optional().default(0),
+  conditions: RedemptionRuleConditionsSchema.optional(),
+  active: z.boolean().optional(),
+  activeFrom: z.string().nullable().optional(),
+  activeUntil: z.string().nullable().optional(),
+  perCustomerLimit: z.coerce.number().int().positive().nullable().optional(),
+  tenantUsageLimit: z.coerce.number().int().positive().nullable().optional(),
+};
+
+export const CreateRedemptionRuleSchema = z
+  .object(redemptionBase)
+  .superRefine((value, ctx) => {
+    if (
+      value.redemptionMode === "per_point" &&
+      value.discountType !== "fixed"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["discountType"],
+        message: "Per-point redemption must use a fixed PKR amount",
+      });
+    }
+    if (value.discountType === "percent" && value.discountValue > 100) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["discountValue"],
+        message: "Percentage discount cannot exceed 100",
+      });
+    }
+  });
+
+export const UpdateRedemptionRuleSchema = z
+  .object({
+    id: uuid,
+    name: name.optional(),
+    description: z.string().max(500).nullable().optional(),
+    redemptionMode: z.enum(["fixed", "per_point"]).optional(),
+    discountType: z.enum(["fixed", "percent"]).optional(),
+    discountValue: z.coerce.number().positive().optional(),
+    pointsCost: z.coerce.number().int().positive().optional(),
+    priority: z.coerce.number().int().optional(),
+    conditions: RedemptionRuleConditionsSchema.optional(),
+    active: z.boolean().optional(),
+    activeFrom: z.string().nullable().optional(),
+    activeUntil: z.string().nullable().optional(),
+    perCustomerLimit: z.coerce.number().int().positive().nullable().optional(),
+    tenantUsageLimit: z.coerce.number().int().positive().nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.redemptionMode === "per_point" &&
+      value.discountType &&
+      value.discountType !== "fixed"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["discountType"],
+        message: "Per-point redemption must use a fixed PKR amount",
+      });
+    }
+    if (
+      value.discountType === "percent" &&
+      value.discountValue != null &&
+      value.discountValue > 100
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["discountValue"],
+        message: "Percentage discount cannot exceed 100",
+      });
+    }
+  });
+
+const checkoutItem = z.object({
+  productId: uuid.optional(),
+  sku: z.string().max(100).optional(),
+  category: z.string().max(100).optional(),
+  quantity: z.coerce.number().positive(),
+  unitPrice: z.coerce.number().nonnegative(),
+});
+
+export const CheckoutSchema = z
+  .object({
+    checkoutId: z.string().trim().min(1).max(200).optional(),
+    orderId: z.string().trim().min(1).max(200).optional(),
+    customerEmail: email.optional(),
+    customerPhone: z.string().max(30).optional(),
+    orderAmount: z.coerce.number().nonnegative(),
+    items: z.array(checkoutItem).optional().default([]),
+  })
+  .refine((value) => Boolean(value.checkoutId || value.orderId), {
+    message: "checkoutId or orderId is required",
+    path: ["checkoutId"],
+  })
+  .refine((value) => Boolean(value.customerEmail || value.customerPhone), {
+    message: "customerEmail or customerPhone is required",
+    path: ["customerEmail"],
+  });
+
+export const CheckoutTransitionSchema = z
+  .object({
+    checkoutId: z.string().trim().min(1).max(200).optional(),
+    orderId: z.string().trim().min(1).max(200).optional(),
+    reason: z.string().trim().min(1).max(500).optional(),
+  })
+  .refine((value) => Boolean(value.checkoutId || value.orderId), {
+    message: "checkoutId or orderId is required",
+    path: ["checkoutId"],
+  });
+
+export const OwnerCheckoutSchema = z
+  .object({
+    checkoutId: z.string().trim().min(1).max(200).optional(),
+    orderId: z.string().trim().min(1).max(200).optional(),
+    customerEmail: email.optional(),
+    customerPhone: z.string().max(30).optional(),
+    orderAmount: z.coerce.number().nonnegative(),
+    items: z.array(checkoutItem).optional().default([]),
+  })
+  .refine((value) => Boolean(value.customerEmail || value.customerPhone), {
+    message: "customerEmail or customerPhone is required",
+    path: ["customerEmail"],
+  });
+
+export const OwnerRefundSchema = z
+  .object({
+    checkoutId: z.string().trim().min(1).max(200).optional(),
+    orderId: z.string().trim().min(1).max(200).optional(),
+    reason: z.string().trim().min(1, "Refund reason is required").max(500),
+  })
+  .refine((value) => Boolean(value.checkoutId || value.orderId), {
+    message: "checkoutId or orderId is required",
+    path: ["checkoutId"],
+  });
 
 // ─── Owner: Rules ────────────────────────────────────────────────────────────
 
@@ -188,7 +357,9 @@ export const CreateRuleSchema = z.object({
   description: z.string().max(500).optional(),
   eventType: z.string().min(1, "Event type is required"),
   perItem: z.boolean().optional(),
-  formulaGroups: z.array(FormulaGroupSchema).min(1, "At least one formula group is required"),
+  formulaGroups: z
+    .array(FormulaGroupSchema)
+    .min(1, "At least one formula group is required"),
   pointsExpireAfterDays: z.coerce
     .number()
     .int()
@@ -230,16 +401,17 @@ export const CreateEventSchema = z.object({
   eventKey: z.string().max(200).nullable().optional(),
   customerId: z.string().optional(),
   customerEmail: z.email().optional(),
+  customerPhone: z.string().max(30).optional(),
 });
 
 // ─── Transactions ────────────────────────────────────────────────────────────
 
 export const CreateTransactionSchema = z.object({
   customerId: uuid,
-  transactionType: z.enum(["redeem", "adjust"], {
-    error: "Invalid transaction type. Must be redeem or adjust",
+  transactionType: z.enum(["adjust"], {
+    error:
+      "Only manual adjustments are supported; discounts are applied at checkout",
   }),
-  rewardId: uuid.optional(),
   points: z.coerce.number().int().optional(),
   description: z.string().max(500).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),

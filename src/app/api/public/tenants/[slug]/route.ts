@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { createPortalTenantToken } from "@/lib/auth";
 
 export async function GET(
   _req: Request,
@@ -25,5 +26,13 @@ export async function GET(
     return NextResponse.json({ error: "Program not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ tenant });
+  const response = NextResponse.json({ tenant });
+  response.cookies.set("portal_tenant_token", createPortalTenantToken(tenant.id), {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    maxAge: 24 * 60 * 60,
+    path: "/",
+  });
+  return response;
 }

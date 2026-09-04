@@ -4,9 +4,10 @@ import {
   earningRules,
   pointTransactions,
   redemptionRewards,
+  redemptionRules,
 } from "@/db/schema";
 import { requireOwnerTenant } from "@/lib/api-guard";
-import { applyAdjust, applyRedeem, PointsError } from "@/lib/points";
+import { applyAdjust, PointsError } from "@/lib/points";
 import { CreateTransactionSchema, parseBody } from "@/lib/validations";
 import { and, desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -28,6 +29,8 @@ export async function GET() {
       ruleName: earningRules.name,
       rewardId: pointTransactions.rewardId,
       rewardName: redemptionRewards.name,
+      redemptionRuleId: pointTransactions.redemptionRuleId,
+      redemptionRuleName: redemptionRules.name,
       eventId: pointTransactions.eventId,
       description: pointTransactions.description,
       orderAmount: pointTransactions.orderAmount,
@@ -42,6 +45,7 @@ export async function GET() {
       redemptionRewards,
       eq(pointTransactions.rewardId, redemptionRewards.id),
     )
+    .leftJoin(redemptionRules, eq(pointTransactions.redemptionRuleId, redemptionRules.id))
     .where(eq(pointTransactions.tenantId, tenantId))
     .orderBy(desc(pointTransactions.createdAt))
     .limit(200);
@@ -56,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = await parseBody(req, CreateTransactionSchema);
   if (parsed.error) return parsed.error;
-  const { customerId, transactionType, rewardId, points, description, metadata } = parsed.data;
+  const { customerId, transactionType, points, description, metadata } = parsed.data;
 
   const [customer] = await db
     .select()
@@ -70,24 +74,6 @@ export async function POST(req: NextRequest) {
 
   try {
     switch (transactionType) {
-      case "redeem": {
-        if (!rewardId) {
-          return NextResponse.json(
-            { error: "Redemption requires a reward" },
-            { status: 400 },
-          );
-        }
-        return NextResponse.json(
-          await applyRedeem({
-            tenantId,
-            customerId,
-            rewardId,
-            description,
-            metadata,
-          }),
-          { status: 201 },
-        );
-      }
       case "adjust": {
         if (!points || points === 0) {
           return NextResponse.json(
@@ -106,15 +92,8 @@ export async function POST(req: NextRequest) {
           { status: 201 },
         );
       }
-      default:
-        return NextResponse.json(
-          {
-            error:
-              "Invalid transaction type. Use the Record Event action to award points",
-          },
-          { status: 400 },
-        );
     }
+    return NextResponse.json({ error: "Unsupported transaction type" }, { status: 400 });
   } catch (err) {
     if (err instanceof PointsError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

@@ -8,6 +8,20 @@
       "when": 1786945579344,
       "tag": "0000_lonely_dust",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788435600000,
+      "tag": "0001_unique_customer_phones",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788440000000,
+      "tag": "0002_redemption_rules",
+      "breakpoints": true
     }
   ]
 }

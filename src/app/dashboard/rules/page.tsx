@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { ShieldCheck, Plus, Trash2, ArrowLeft } from "lucide-react";
 import { VStack, HStack, Stack } from "@astryxdesign/core/Layout";
 import { Text, Heading } from "@astryxdesign/core/Text";
@@ -41,15 +42,14 @@ import type {
 } from "react-querybuilder";
 import QueryBuilder from "react-querybuilder";
 import { AppQueryBuilderElements } from "@/components/AppQueryBuilder";
-import { CheckboxInput, proportional, Table } from "@astryxdesign/core";
+import {
+  CheckboxInput,
+  FormLayout,
+  proportional,
+  Table,
+} from "@astryxdesign/core";
 
 const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
-const ROUNDING_OPTIONS = [
-  { value: "floor", label: "Floor (round down)" },
-  { value: "ceil", label: "Ceil (round up)" },
-  { value: "round", label: "Round (nearest)" },
-];
-
 const SUPPORTED_OPERATORS = [
   { name: "=", label: "=" },
   { name: "!=", label: "!=" },
@@ -72,6 +72,7 @@ function eventTypeBadgeColor(
     "blue" | "green" | "yellow" | "purple" | "teal" | "orange"
   > = {
     purchase: "blue",
+    visit: "teal",
     review: "purple",
     referral: "teal",
     newsletter_signup: "yellow",
@@ -97,7 +98,32 @@ function getFieldsForEvent(eventType: EventType, perItem: boolean): Field[] {
     }));
 }
 
+function sanitizeConditions(
+  conditions: RuleGroupType,
+  eventType: EventType,
+  perItem: boolean,
+): RuleGroupType {
+  const allowed = new Set(
+    getFieldsForEvent(eventType, perItem).map((field) => field.name),
+  );
+  const rules: RuleGroupType["rules"] = [];
+  for (const rule of conditions.rules) {
+    if ("combinator" in rule) {
+      const nested = sanitizeConditions(rule, eventType, perItem);
+      if (nested.rules.length > 0) rules.push(nested);
+    } else if (allowed.has(rule.field)) {
+      rules.push(rule);
+    }
+  }
+  return {
+    combinator: conditions.combinator,
+    rules,
+  };
+}
+
 function getNumericFields(eventType: EventType, perItem: boolean): Field[] {
+  // visit has no rate basis (no amount to take a % of); force flat formulas.
+  if (eventType === "visit") return [];
   return getFieldsForEvent(eventType, perItem).filter(
     (f) => f.type === "number",
   );
@@ -124,11 +150,24 @@ function defaultStructuredFormula(): StructuredFormula {
   };
 }
 
-function defaultFormulaGroup(): FormulaGroupState {
+function defaultFormulaGroup(
+  eventType: EventType = "purchase",
+): FormulaGroupState {
+  const hasNumericFields = getNumericFields(eventType, false).length > 0;
   return {
     conditions: { combinator: "and", rules: [] },
-    formulaType: "rate",
-    structured: defaultStructuredFormula(),
+    formulaType: hasNumericFields ? "rate" : "flat",
+    structured: hasNumericFields
+      ? defaultStructuredFormula()
+      : {
+          type: "flat",
+          basis: "",
+          rate: 0,
+          flatAmount: 1,
+          rounding: "floor",
+          minPoints: null,
+          maxPoints: null,
+        },
   };
 }
 
@@ -161,11 +200,26 @@ function defaultWizardState(): WizardState {
 }
 
 function stateToInput(s: WizardState): EarningRuleInput {
+  const fieldless = getNumericFields(s.eventType, s.perItem).length === 0;
   const groups: FormulaGroup[] = s.formulaGroups.map((g) => ({
-    conditions: g.conditions,
-    formula: g.formulaType === "flat"
-      ? { ...g.structured, type: "flat" as const, rate: 0 }
-      : { ...g.structured, type: "rate" as const },
+    conditions: sanitizeConditions(g.conditions, s.eventType, s.perItem),
+    formula:
+      fieldless || g.formulaType === "flat"
+        ? {
+            ...g.structured,
+            type: "flat" as const,
+            rate: 0,
+            rounding: "floor" as const,
+            minPoints: null,
+            maxPoints: null,
+          }
+        : {
+            ...g.structured,
+            type: "rate" as const,
+            rounding: "floor" as const,
+            minPoints: null,
+            maxPoints: null,
+          },
   }));
   return {
     name: s.name,
@@ -179,13 +233,23 @@ function stateToInput(s: WizardState): EarningRuleInput {
 }
 
 function stateFromRule(r: EarningRule): WizardState {
-  const groups: FormulaGroupState[] = (r.formulaGroups && r.formulaGroups.length > 0)
-    ? r.formulaGroups.map((g) => ({
-        conditions: g.conditions,
-        formulaType: g.formula.type,
-        structured: g.formula,
-      }))
-    : [defaultFormulaGroup()];
+  const fieldless = getNumericFields(r.eventType, r.perItem).length === 0;
+  const groups: FormulaGroupState[] =
+    r.formulaGroups && r.formulaGroups.length > 0
+      ? r.formulaGroups.map((g) => ({
+          conditions: sanitizeConditions(g.conditions, r.eventType, r.perItem),
+          formulaType: fieldless ? "flat" : g.formula.type,
+          structured: fieldless
+            ? {
+                ...g.formula,
+                type: "flat",
+                basis: "",
+                rate: 0,
+                flatAmount: g.formula.flatAmount || 1,
+              }
+            : g.formula,
+        }))
+      : [defaultFormulaGroup(r.eventType)];
   return {
     name: r.name,
     description: r.description ?? "",
@@ -227,6 +291,7 @@ function FormulaGroupCard({
   const allFields = getFieldsForEvent(eventType, perItem);
   const hasNumericFields = numericFields.length > 0;
   const hasEventFields = hasFields(eventType);
+  const formulaType = hasNumericFields ? group.formulaType : "flat";
 
   const updateStructured = (patch: Partial<StructuredFormula>) => {
     onChange(index, {
@@ -253,7 +318,9 @@ function FormulaGroupCard({
 
         {hasEventFields && (
           <VStack gap={2} hAlign="stretch">
-            <Text type="label" weight="bold">Conditions</Text>
+            <Text type="label" weight="bold">
+              Conditions
+            </Text>
             <Text type="supporting" color="secondary">
               Leave empty to match all events. Add conditions to filter which
               events qualify for this group.
@@ -274,16 +341,18 @@ function FormulaGroupCard({
           </VStack>
         )}
 
-        <VStack gap={2} hAlign="stretch">
-          <Text type="label" weight="bold">Formula</Text>
+        <Text type="label" weight="bold">
+          Formula
+        </Text>
+        <FormLayout direction="horizontal">
           <Selector
             label="Formula type"
-            value={group.formulaType}
+            value={formulaType}
             options={[
-              { value: "rate", label: "Rate (% of basis)" },
               ...(hasNumericFields
-                ? [{ value: "flat", label: "Flat (fixed points)" }]
+                ? [{ value: "rate", label: "Rate (% of basis)" }]
                 : []),
+              { value: "flat", label: "Flat (fixed points)" },
             ]}
             onChange={(v: string) => {
               const ft = v as "rate" | "flat";
@@ -298,8 +367,8 @@ function FormulaGroupCard({
             }}
           />
 
-          {group.formulaType === "rate" && (
-            <VStack gap={3} hAlign="stretch">
+          {formulaType === "rate" && (
+            <FormLayout direction="horizontal">
               <Selector
                 label="Basis (what to take the percentage of)"
                 value={group.structured.basis}
@@ -317,14 +386,10 @@ function FormulaGroupCard({
                 }
                 min={0.01}
               />
-              <Text type="supporting" color="secondary">
-                e.g. {group.structured.rate}% of{" "}
-                {group.structured.basis || "basis"} becomes points
-              </Text>
-            </VStack>
+            </FormLayout>
           )}
 
-          {group.formulaType === "flat" && (
+          {formulaType === "flat" && (
             <VStack gap={3} hAlign="stretch">
               <NumberInput
                 label="Points to award"
@@ -334,37 +399,9 @@ function FormulaGroupCard({
                 }
                 min={1}
               />
-              <Text type="supporting" color="secondary">
-                Fixed points awarded when this group matches
-              </Text>
             </VStack>
           )}
-
-          <Selector
-            label="Rounding"
-            value={group.structured.rounding}
-            options={ROUNDING_OPTIONS}
-            onChange={(v: string) => updateStructured({ rounding: v as StructuredFormula["rounding"] })}
-          />
-          <HStack gap={3}>
-            <NumberInput
-              label="Min points (floor)"
-              value={group.structured.minPoints}
-              onChange={(v: number | null) =>
-                updateStructured({ minPoints: v })
-              }
-              isOptional
-            />
-            <NumberInput
-              label="Max points (cap)"
-              value={group.structured.maxPoints}
-              onChange={(v: number | null) =>
-                updateStructured({ maxPoints: v })
-              }
-              isOptional
-            />
-          </HStack>
-        </VStack>
+        </FormLayout>
       </VStack>
     </Card>
   );
@@ -422,11 +459,17 @@ export default function RulesPage() {
     for (let i = 0; i < state.formulaGroups.length; i++) {
       const g = state.formulaGroups[i];
       if (g.formulaType === "flat" && g.structured.flatAmount <= 0) {
-        showToast({ type: "error", body: `Formula group ${i + 1}: flat amount must be greater than 0` });
+        showToast({
+          type: "error",
+          body: `Formula group ${i + 1}: flat amount must be greater than 0`,
+        });
         return;
       }
       if (g.formulaType === "rate" && !g.structured.basis) {
-        showToast({ type: "error", body: `Formula group ${i + 1}: basis is required for rate formulas` });
+        showToast({
+          type: "error",
+          body: `Formula group ${i + 1}: basis is required for rate formulas`,
+        });
         return;
       }
     }
@@ -480,7 +523,10 @@ export default function RulesPage() {
   const addGroup = () => {
     setState({
       ...state,
-      formulaGroups: [...state.formulaGroups, defaultFormulaGroup()],
+      formulaGroups: [
+        ...state.formulaGroups,
+        defaultFormulaGroup(state.eventType),
+      ],
     });
   };
 
@@ -538,7 +584,42 @@ export default function RulesPage() {
                   label: eventLabel(t),
                 }))}
                 onChange={(v: string) => {
-                  setState({ ...state, eventType: v as EventType });
+                  const eventType = v as EventType;
+                  const fieldless =
+                    getNumericFields(eventType, false).length === 0;
+                  setState({
+                    ...state,
+                    eventType,
+                    perItem: eventType === "purchase" ? state.perItem : false,
+                    formulaGroups: state.formulaGroups.map((group) => ({
+                      ...group,
+                      conditions: sanitizeConditions(
+                        group.conditions,
+                        eventType,
+                        eventType === "purchase" ? state.perItem : false,
+                      ),
+                    })),
+                    ...(fieldless
+                      ? {
+                          formulaGroups: state.formulaGroups.map((group) => ({
+                            ...group,
+                            conditions: sanitizeConditions(
+                              group.conditions,
+                              eventType,
+                              false,
+                            ),
+                            formulaType: "flat" as const,
+                            structured: {
+                              ...group.structured,
+                              type: "flat" as const,
+                              basis: "",
+                              rate: 0,
+                              flatAmount: group.structured.flatAmount || 1,
+                            },
+                          })),
+                        }
+                      : {}),
+                  });
                 }}
               />
               {state.eventType === "purchase" && (
@@ -600,9 +681,7 @@ export default function RulesPage() {
                   {state.description}
                 </Text>
               )}
-              <Text type="body">
-                Per item: {state.perItem ? "Yes" : "No"}
-              </Text>
+              <Text type="body">Per item: {state.perItem ? "Yes" : "No"}</Text>
               <VStack gap={2} hAlign="stretch">
                 <Text type="label" weight="bold">
                   Formula groups ({state.formulaGroups.length})
@@ -687,8 +766,9 @@ export default function RulesPage() {
         container="card"
       />
 
-      {rules.length === 0 ? (
-        <Card padding={8}>
+      <Table
+        data={rules}
+        emptyState={
           <EmptyState
             title="No rules yet"
             description="Create your first earning rule to start awarding points automatically."
@@ -701,69 +781,74 @@ export default function RulesPage() {
               />
             }
           />
-        </Card>
-      ) : (
-        <Table
-          data={rules}
-          columns={[
-            {
-              key: "name",
-              header: "Name",
-            },
-            {
-              key: "description",
-              header: "Description",
-              width: proportional(2),
-            },
-            {
-              key: "pointsExpireAfterDays",
-              header: "Points expire after days",
-              renderCell: (item) => (
-                <Text type="supporting" color="secondary">
-                  {item.formulaText} · Expiry:{" "}
-                  {item.pointsExpireAfterDays
-                    ? `${item.pointsExpireAfterDays}d`
-                    : "never"}
-                </Text>
-              ),
-            },
-            {
-              key: "active",
-              header: "Active",
-              renderCell: (item) => (
-                <Switch
-                  label=""
-                  value={item.active}
-                  onChange={(v) =>
-                    toggleMutation.mutate({ id: item.id, active: v })
-                  }
+        }
+        columns={[
+          {
+            key: "name",
+            header: "Name",
+            renderCell: (item) => (
+              <Link
+                href={`/dashboard/rules/${item.id}`}
+                className="text-accent font-medium hover:underline"
+              >
+                {item.name}
+              </Link>
+            ),
+          },
+          {
+            key: "description",
+            header: "Description",
+            width: proportional(2),
+          },
+          {
+            key: "pointsExpireAfterDays",
+            header: "Points expire after days",
+            renderCell: (item) => (
+              <Text type="supporting" color="secondary">
+                {item.formulaText} · Expiry:{" "}
+                {item.pointsExpireAfterDays
+                  ? `${item.pointsExpireAfterDays}d`
+                  : "never"}
+              </Text>
+            ),
+          },
+          {
+            key: "active",
+            header: "Active",
+            renderCell: (item) => (
+              <Switch
+                label=""
+                value={item.active}
+                onChange={(v) =>
+                  toggleMutation.mutate({ id: item.id, active: v })
+                }
+              />
+            ),
+          },
+          {
+            key: "actions",
+            header: "Actions",
+            align: "start",
+            renderCell: (item) => (
+              <Stack direction="horizontal" gap={2} hAlign="start">
+                <Button
+                  label="Edit"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => startEdit(item)}
                 />
-              ),
-            },
-            {
-              key: "actions",
-              header: "Actions",
-              align: "start",
-              renderCell: (item) => (
-                <Stack direction="horizontal" gap={2} hAlign="start">
-                  <Button
-                    label="Edit"
-                    variant="primary"
-                    size="sm"
-                    onClick={() => startEdit(item)}
-                  />
-                  <Button
-                    label="Delete"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDelete(item)}
-                  />
-                </Stack>
-              ),
-            },
-          ]}
-        />
-      )}
+                <Button
+                  label="Delete"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDelete(item)}
+                />
+              </Stack>
+            ),
+          },
+        ]}
+      />
+
       {alert.element}
     </VStack>
   );

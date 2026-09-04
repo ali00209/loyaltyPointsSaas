@@ -5,6 +5,7 @@ export * from "./portal";
 export * from "./product";
 export * from "./rule";
 export * from "./reward";
+export * from "./redemption";
 export * from "./transaction";
 export * from "./dashboard";
 export * from "./tenant";

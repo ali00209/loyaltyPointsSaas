@@ -26,6 +26,7 @@ import {
   useDeleteProduct,
 } from "@/lib/query";
 import type { Product, ProductInput } from "@/types";
+import { formatPKR } from "@/lib/money";
 
 const CATEGORIES = [
   "General",
@@ -163,8 +164,11 @@ export default function ProductsPage() {
         setSearch={setSearch}
       />
 
-      {filtered.length === 0 ? (
-        <Card padding={8}>
+      <Table
+        data={filtered}
+        idKey="id"
+        hasHover
+        emptyState={
           <EmptyState
             title="No products found"
             description={
@@ -183,87 +187,81 @@ export default function ProductsPage() {
               ) : undefined
             }
           />
-        </Card>
-      ) : (
-        <Table
-          data={filtered}
-          idKey="id"
-          hasHover
-          columns={[
-            {
-              key: "name",
-              header: "Product",
-              width: proportional(1),
-              renderCell: (p: Product) => (
-                <Text type="body" weight="medium">
-                  {p.name}
-                </Text>
-              ),
-            },
-            {
-              key: "sku",
-              header: "SKU",
-              renderCell: (p: Product) => (
-                <Text type="code" color="secondary">
-                  {p.sku}
-                </Text>
-              ),
-            },
-            {
-              key: "price",
-              header: "Price",
-              renderCell: (p: Product) => (
-                <Text type="body" weight="medium" hasTabularNumbers>
-                  ${parseFloat(p.price).toFixed(2)}
-                </Text>
-              ),
-            },
-            {
-              key: "category",
-              header: "Category",
-              renderCell: (p: Product) => (
-                <Badge
-                  variant={categoryTypeBadge[p.category]}
-                  label={p.category}
+        }
+        columns={[
+          {
+            key: "name",
+            header: "Product",
+            width: proportional(1),
+            renderCell: (p: Product) => (
+              <Text type="body" weight="medium">
+                {p.name}
+              </Text>
+            ),
+          },
+          {
+            key: "sku",
+            header: "SKU",
+            renderCell: (p: Product) => (
+              <Text type="code" color="secondary">
+                {p.sku}
+              </Text>
+            ),
+          },
+          {
+            key: "price",
+            header: "Price (PKR)",
+            renderCell: (p: Product) => (
+              <Text type="body" weight="medium" hasTabularNumbers>
+                {formatPKR(p.price)}
+              </Text>
+            ),
+          },
+          {
+            key: "category",
+            header: "Category",
+            renderCell: (p: Product) => (
+              <Badge
+                variant={categoryTypeBadge[p.category]}
+                label={p.category}
+              />
+            ),
+          },
+          {
+            key: "status",
+            header: "Status",
+            renderCell: (p: Product) => (
+              <Switch
+                label={`${p.name} status`}
+                isLabelHidden
+                value={p.active}
+                changeAction={handleToggle(p).changeAction}
+              />
+            ),
+          },
+          {
+            key: "actions",
+            header: "Actions",
+            align: "center",
+            renderCell: (p: Product) => (
+              <HStack gap={1} hAlign="center">
+                <Button
+                  label="Edit"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => openEdit(p)}
                 />
-              ),
-            },
-            {
-              key: "status",
-              header: "Status",
-              renderCell: (p: Product) => (
-                <Switch
-                  label={`${p.name} status`}
-                  isLabelHidden
-                  value={p.active}
-                  changeAction={handleToggle(p).changeAction}
+                <Button
+                  label="Delete"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleDelete(p)}
                 />
-              ),
-            },
-            {
-              key: "actions",
-              header: "Actions",
-              align: "center",
-              renderCell: (p: Product) => (
-                <HStack gap={1} hAlign="center">
-                  <Button
-                    label="Edit"
-                    variant="primary"
-                    size="sm"
-                    onClick={() => openEdit(p)}
-                  />
-                  <Button
-                    label="Delete"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDelete(p)}
-                  />
-                </HStack>
-              ),
-            },
-          ]}
-        />
-      )}
+              </HStack>
+            ),
+          },
+        ]}
+      />
 
       <Dialog
         isOpen={showForm}
@@ -291,7 +289,7 @@ export default function ProductsPage() {
             isRequired
           />
           <NumberInput
-            label="Price ($)"
+            label="Price (PKR)"
             placeholder="0.00"
             value={form.price}
             onChange={(v) => setForm({ ...form, price: v })}

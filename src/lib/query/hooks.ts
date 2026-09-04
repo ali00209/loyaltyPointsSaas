@@ -29,6 +29,7 @@ import {
   fetchPortalTenant,
   fetchProducts,
   fetchRewards,
+  fetchStoreQr,
   fetchTransactions,
   login,
   logout,
@@ -40,11 +41,19 @@ import {
   postPortalReview,
   regenerateApiKey,
   register,
+  createRedemptionRule,
+  deleteRedemptionRule,
+  fetchRedemptionRules,
+  fetchRedemptionCheckoutHistory,
+  previewOwnerCheckout,
+  confirmOwnerCheckout,
+  refundOwnerCheckout,
   seedDemoData,
   toggleRuleAssignment,
   updateCustomer,
   updateProduct,
   updateReward,
+  updateRedemptionRule,
   updateRule,
   updateTenant,
   updateProfile,
@@ -64,6 +73,10 @@ import type {
   Product,
   ProductInput,
   RedemptionReward,
+  RedemptionRule,
+  RedemptionRuleInput,
+  CheckoutPreview,
+  OwnerCheckoutInput,
   RegisterInput,
   RewardInput,
   TransactionInput,
@@ -217,6 +230,49 @@ export function useDeleteRule() {
   });
 }
 
+// --- Automatic redemption rules ---
+
+export function useRedemptionRules() {
+  return useQuery({
+    queryKey: queryKeys.redemptionRules.all,
+    queryFn: fetchRedemptionRules,
+  });
+}
+
+export function useCreateRedemptionRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RedemptionRuleInput) => createRedemptionRule(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.redemptionRules.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    },
+  });
+}
+
+export function useUpdateRedemptionRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Partial<RedemptionRuleInput> }) =>
+      updateRedemptionRule(id, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.redemptionRules.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    },
+  });
+}
+
+export function useDeleteRedemptionRule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteRedemptionRule(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.redemptionRules.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    },
+  });
+}
+
 // --- Rewards ---
 
 export function useRewards() {
@@ -269,6 +325,50 @@ export function useTransactions() {
   });
 }
 
+export function useRedemptionCheckoutHistory() {
+  return useQuery({
+    queryKey: queryKeys.redemptionCheckouts.all,
+    queryFn: fetchRedemptionCheckoutHistory,
+  });
+}
+
+export function usePreviewOwnerCheckout() {
+  return useMutation({
+    mutationFn: (input: OwnerCheckoutInput): Promise<CheckoutPreview> =>
+      previewOwnerCheckout(input),
+  });
+}
+
+export function useConfirmOwnerCheckout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OwnerCheckoutInput) => confirmOwnerCheckout(input),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.redemptionCheckouts.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.customers.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
+}
+
+export function useRefundOwnerCheckout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: refundOwnerCheckout,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.redemptionCheckouts.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.customers.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all }),
+      ]);
+    },
+  });
+}
+
 export function useCreateTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -287,6 +387,13 @@ export function useDashboard() {
   return useQuery({
     queryKey: queryKeys.dashboard.all,
     queryFn: fetchDashboard,
+  });
+}
+
+export function useStoreQr() {
+  return useQuery({
+    queryKey: ["store-qr"],
+    queryFn: fetchStoreQr,
   });
 }
 

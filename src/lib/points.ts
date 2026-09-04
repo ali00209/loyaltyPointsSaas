@@ -155,7 +155,7 @@ async function creditPoints(
 }
 
 // Consume points FIFO (earliest expiry first, non-expiring points last).
-async function consumePoints(
+export async function consumePoints(
   tx: Tx,
   args: { tenantId: string; customerId: string; amount: number },
 ): Promise<void> {
@@ -186,9 +186,37 @@ async function consumePoints(
       .where(eq(customerRuleBalances.id, bucket.id));
   }
 
+  if (remaining > 0) {
+    throw new PointsError("Customer does not have enough points");
+  }
+
   await tx
     .update(customers)
     .set({ currentBalance: sql`${customers.currentBalance} - ${args.amount}` })
+    .where(
+      and(
+        eq(customers.id, args.customerId),
+        eq(customers.tenantId, args.tenantId),
+      ),
+    );
+}
+
+export async function restorePoints(
+  tx: Tx,
+  args: { tenantId: string; customerId: string; amount: number },
+): Promise<void> {
+  if (args.amount <= 0) return;
+
+  await tx.insert(customerRuleBalances).values({
+    tenantId: args.tenantId,
+    customerId: args.customerId,
+    ruleId: null,
+    remainingPoints: args.amount,
+    expiresAt: null,
+  });
+  await tx
+    .update(customers)
+    .set({ currentBalance: sql`${customers.currentBalance} + ${args.amount}` })
     .where(
       and(
         eq(customers.id, args.customerId),
@@ -299,6 +327,22 @@ async function buildEventFacts(
     orderFacts.rating = Number(input.payload.rating ?? 0);
   } else if (input.eventType === "social_share") {
     orderFacts.platform = input.payload.platform ?? null;
+  } else if (input.eventType === "visit") {
+    orderFacts.locationId = input.payload.locationId ?? null;
+    orderFacts.checkedInAt = input.payload.checkedInAt ?? null;
+    // Lifetime visit count (1-based). The current event row already exists,
+    // so the row count equals this visit's number.
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(events)
+      .where(
+        and(
+          eq(events.tenantId, input.tenantId),
+          eq(events.customerId, input.customerId),
+          eq(events.eventType, "visit"),
+        ),
+      );
+    orderFacts.visitCount = Number(count);
   }
 
   return { orderFacts, itemFacts };
@@ -600,5 +644,5 @@ export async function applyAdjust(input: AdjustInput) {
 
 // Used to reset the demo when reseeding.
 export async function resetDemoData() {
-  await pool.query("TRUNCATE api_keys, events, customer_rule_balances, point_transactions, redemption_rewards, earning_rules, customers, products, users, tenants RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE api_keys, redemption_checkouts, events, customer_rule_balances, point_transactions, redemption_rules, redemption_rewards, earning_rules, customers, products, users, tenants RESTART IDENTITY CASCADE");
 }

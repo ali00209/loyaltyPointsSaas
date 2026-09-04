@@ -25,6 +25,7 @@ export default function AppApiSetting() {
 
   const slug = (user?.tenant as { slug?: string } | null | undefined)?.slug;
   const portalUrl = slug ? `/p/${slug}` : null;
+  const apiBaseUrl = "https://your-loyalty-domain.com/api";
 
   const copyToClipboard = async (text: string, successMessage: string) => {
     try {
@@ -98,8 +99,8 @@ export default function AppApiSetting() {
         <VStack gap={4} hAlign="stretch">
           <Heading level={2}>API Key</Heading>
           <Text type="body" color="secondary">
-            Use this key to report events to your loyalty program from your own
-            systems.
+            Use this key to report events and run automatic checkout redemptions
+            from your own systems.
           </Text>
 
           {newKey ? (
@@ -180,19 +181,6 @@ export default function AppApiSetting() {
               </HStack>
             </VStack>
           )}
-
-          <Banner
-            status="info"
-            title="Report a purchase event with your API key"
-            container="card"
-          />
-          <VStack gap={1} hAlign="stretch">
-            <Text type="code">POST /api/events</Text>
-            <Text type="code">Authorization: Bearer &lt;KEY&gt;</Text>
-            <Text type="code">
-              {`{ "eventType": "purchase", "customerEmail": "customer@example.com", "payload": { "orderAmount": 25.5 } }`}
-            </Text>
-          </VStack>
         </VStack>
       </Card>
 

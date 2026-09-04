@@ -78,8 +78,11 @@ export default function AdminTenantsPage() {
         showFilter={false}
       />
 
-      {tenants.length === 0 ? (
-        <Card padding={8}>
+      <Table
+        data={tenants}
+        idKey="id"
+        hasHover
+        emptyState={
           <EmptyState
             title="No tenants yet"
             description="Create your first tenant to get started"
@@ -92,84 +95,78 @@ export default function AdminTenantsPage() {
               />
             }
           />
-        </Card>
-      ) : (
-        <Table
-          data={tenants}
-          idKey="id"
-          hasHover
-          columns={[
-            {
-              key: "name",
-              header: "Tenant",
-              renderCell: (t: AdminTenant) => (
-                <Text type="body" weight="medium">
-                  {t.name}
-                </Text>
-              ),
-            },
-            {
-              key: "owner",
-              header: "Owner",
-              renderCell: (t: AdminTenant) => (
-                <HStack gap={2} vAlign="center">
-                  <Avatar name={t.ownerName || "?"} size="sm" />
-                  <VStack gap={0} hAlign="stretch">
-                    <Text type="body" maxLines={1}>
-                      {t.ownerName || "—"}
+        }
+        columns={[
+          {
+            key: "name",
+            header: "Tenant",
+            renderCell: (t: AdminTenant) => (
+              <Text type="body" weight="medium">
+                {t.name}
+              </Text>
+            ),
+          },
+          {
+            key: "owner",
+            header: "Owner",
+            renderCell: (t: AdminTenant) => (
+              <HStack gap={2} vAlign="center">
+                <Avatar name={t.ownerName || "?"} size="sm" />
+                <VStack gap={0} hAlign="stretch">
+                  <Text type="body" maxLines={1}>
+                    {t.ownerName || "—"}
+                  </Text>
+                  {t.ownerEmail && (
+                    <Text type="supporting" color="secondary" maxLines={1}>
+                      {t.ownerEmail}
                     </Text>
-                    {t.ownerEmail && (
-                      <Text type="supporting" color="secondary" maxLines={1}>
-                        {t.ownerEmail}
-                      </Text>
-                    )}
-                  </VStack>
-                </HStack>
+                  )}
+                </VStack>
+              </HStack>
+            ),
+          },
+          {
+            key: "customers",
+            header: "Customers",
+            renderCell: (t: AdminTenant) => (
+              <Text type="body" hasTabularNumbers>
+                {t.customerCount}
+              </Text>
+            ),
+          },
+          {
+            key: "rewards",
+            header: "Redemption Rules",
+            renderCell: (t: AdminTenant) => (
+              <Text type="body" hasTabularNumbers>
+                {t.rewardCount}
+              </Text>
+            ),
+          },
+          {
+            key: "status",
+            header: "Status",
+            renderCell: (t: AdminTenant) =>
+              t.suspended ? (
+                <Badge variant="red" label="Suspended" />
+              ) : (
+                <Badge variant="green" label="Active" />
               ),
-            },
-            {
-              key: "customers",
-              header: "Customers",
-              renderCell: (t: AdminTenant) => (
-                <Text type="body" hasTabularNumbers>
-                  {t.customerCount}
-                </Text>
-              ),
-            },
-            {
-              key: "rewards",
-              header: "Rewards",
-              renderCell: (t: AdminTenant) => (
-                <Text type="body" hasTabularNumbers>
-                  {t.rewardCount}
-                </Text>
-              ),
-            },
-            {
-              key: "status",
-              header: "Status",
-              renderCell: (t: AdminTenant) =>
-                t.suspended ? (
-                  <Badge variant="red" label="Suspended" />
-                ) : (
-                  <Badge variant="green" label="Active" />
-                ),
-            },
-            {
-              key: "actions",
-              header: "Actions",
-              renderCell: (t: AdminTenant) => (
-                <Button
-                  label="Manage"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => router.push(`/admin/tenants/${t.id}`)}
-                />
-              ),
-            },
-          ]}
-        />
-      )}
+          },
+          {
+            key: "actions",
+            header: "Actions",
+            renderCell: (t: AdminTenant) => (
+              <Button
+                label="Manage"
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push(`/admin/tenants/${t.id}`)}
+              />
+            ),
+          },
+        ]}
+      />
 
       <Dialog
         isOpen={showForm}

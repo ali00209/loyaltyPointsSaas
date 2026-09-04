@@ -21,6 +21,7 @@ import {
   usePortalPurchases,
   usePostPortalReview,
 } from "@/lib/query";
+import { formatPKR } from "@/lib/money";
 
 interface ReviewTarget {
   purchaseId: string;
@@ -125,9 +126,14 @@ export default function PurchasesPage() {
                     </Text>
                   </VStack>
                   <Text type="body" weight="bold" hasTabularNumbers>
-                    ${purchase.orderAmount.toFixed(2)}
+                    {formatPKR(purchase.orderAmount)}
                   </Text>
                 </HStack>
+                {purchase.appliedBenefit && purchase.appliedBenefit.discountAmount > 0 && (
+                  <Text type="supporting" color="secondary">
+                    Applied loyalty discount: {formatPKR(purchase.appliedBenefit.discountAmount)} · {purchase.appliedBenefit.pointsCost.toLocaleString()} points
+                  </Text>
+                )}
 
                 <VStack gap={2} hAlign="stretch">
                   {purchase.items.map((item) => (
@@ -143,7 +149,7 @@ export default function PurchasesPage() {
                           {item.productName}
                         </Text>
                         <Text type="supporting" color="secondary">
-                          {item.quantity} × ${item.unitPrice.toFixed(2)}
+                          {item.quantity} × {formatPKR(item.unitPrice)}
                         </Text>
                       </VStack>
                       {item.reviewed && item.review ? (

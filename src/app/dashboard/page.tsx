@@ -6,7 +6,7 @@ import {
   TrendingUp,
   CheckCircle,
   ArrowLeftRight,
-  Gift,
+  ShieldCheck,
 } from "lucide-react";
 import { VStack, HStack } from "@astryxdesign/core/Layout";
 import { Grid } from "@astryxdesign/core/Grid";
@@ -67,7 +67,7 @@ export default function DashboardPage() {
       value: data.stats.totalRedeemed.toLocaleString(),
     },
     {
-      label: "Rewards Redeemed",
+      label: "Automatic Discounts",
       value: data.stats.totalRewards.toLocaleString(),
     },
   ];
@@ -219,14 +219,14 @@ export default function DashboardPage() {
             </VStack>
           </Card>
 
-          {/* Top Redeemed Rewards */}
+          {/* Top Redemption Rules */}
           <Card padding={6}>
             <VStack gap={4} hAlign="stretch">
-              <Heading level={2}>Top Redeemed Rewards</Heading>
+              <Heading level={2}>Top Redemption Rules</Heading>
               {data.topRewards.length === 0 ? (
                 <EmptyState
-                  title="No rewards redeemed yet"
-                  icon={<Icon icon={Gift} size="lg" />}
+                  title="No automatic discounts yet"
+                  icon={<Icon icon={ShieldCheck} size="lg" />}
                   isCompact
                 />
               ) : (
@@ -243,7 +243,7 @@ export default function DashboardPage() {
                           vAlign="center"
                           className="rounded-full bg-(--color-background-purple) text-(--color-icon-purple)"
                         >
-                          <Icon icon={Gift} size="sm" />
+                          <Icon icon={ShieldCheck} size="sm" />
                         </HStack>
                       }
                       endContent={

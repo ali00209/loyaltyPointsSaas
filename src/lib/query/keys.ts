@@ -14,8 +14,14 @@ export const queryKeys = {
   rewards: {
     all: ["rewards"] as const,
   },
+  redemptionRules: {
+    all: ["redemption-rules"] as const,
+  },
   transactions: {
     all: ["transactions"] as const,
+  },
+  redemptionCheckouts: {
+    all: ["redemption-checkouts"] as const,
   },
   dashboard: {
     all: ["dashboard"] as const,
