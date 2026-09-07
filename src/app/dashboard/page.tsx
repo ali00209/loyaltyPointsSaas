@@ -18,6 +18,8 @@ import { List, ListItem } from "@astryxdesign/core/List";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { useDashboard } from "@/lib/query";
 import AppLoading from "@/components/AppLoading";
+import * as stylex from "@stylexjs/stylex";
+import { durationVars, easeVars } from "@astryxdesign/core";
 
 const statTiles = [
   {

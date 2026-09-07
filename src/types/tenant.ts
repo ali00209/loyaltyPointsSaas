@@ -39,6 +39,7 @@ export interface CreateTenantInput {
 
 export interface UpdateTenantInput {
   name?: string;
+  slug?: string;
   brandingConfig?: BrandingConfig;
   suspended?: boolean;
 }

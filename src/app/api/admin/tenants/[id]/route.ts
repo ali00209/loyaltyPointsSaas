@@ -57,12 +57,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
 
-  const parsed = await parseBody(req, UpdateTenantSchema);
-  if (parsed.error) return parsed.error;
-  const body = parsed.data;
+  const parseResult = await parseBody(req, UpdateTenantSchema);
+  if (parseResult.error) return parseResult.error;
+  const body = parseResult.data;
+
+  if (body.slug !== undefined) {
+    const [existing] = await db
+      .select({ id: tenants.id })
+      .from(tenants)
+      .where(eq(tenants.slug, body.slug))
+      .limit(1);
+    if (existing && existing.id !== id) {
+      return NextResponse.json(
+        { error: "Another tenant already uses this portal URL" },
+        { status: 409 },
+      );
+    }
+  }
 
   const setValues: Record<string, unknown> = { updatedAt: new Date() };
   if (body.name !== undefined) setValues.name = body.name;
+  if (body.slug !== undefined) setValues.slug = body.slug;
   if (body.brandingConfig !== undefined) setValues.brandingConfig = body.brandingConfig;
   if (body.suspended !== undefined) setValues.suspended = body.suspended;
 

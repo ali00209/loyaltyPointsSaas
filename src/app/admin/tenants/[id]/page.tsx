@@ -35,7 +35,7 @@ export default function AdminTenantDetailPage() {
   const updateMutation = useUpdateTenant();
   const [showEdit, setShowEdit] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", brandColor: "", logoUrl: "" });
+  const [form, setForm] = useState({ name: "", slug: "", brandColor: "", logoUrl: "" });
   const showToast = useToast();
 
   if (tenantLoading || !tenant) {
@@ -45,6 +45,7 @@ export default function AdminTenantDetailPage() {
   const openEdit = () => {
     setForm({
       name: tenant.name,
+      slug: tenant.slug,
       brandColor: tenant.brandingConfig?.brandColor || "",
       logoUrl: tenant.brandingConfig?.logoUrl || "",
     });
@@ -58,6 +59,7 @@ export default function AdminTenantDetailPage() {
         id: tenant.id,
         input: {
           name: form.name,
+          slug: form.slug || undefined,
           brandingConfig: {
             brandColor: form.brandColor || null,
             logoUrl: form.logoUrl || null,
@@ -299,6 +301,15 @@ export default function AdminTenantDetailPage() {
             label="Business Name"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
+            isRequired
+          />
+          <TextInput
+            label="Portal URL name"
+            description={`Client portal URL: /p/${form.slug || "..."}`}
+            value={form.slug}
+            onChange={(v) =>
+              setForm({ ...form, slug: v.toLowerCase().trim().replace(/[^a-z0-9-]/g, "-") })
+            }
             isRequired
           />
           <TextInput

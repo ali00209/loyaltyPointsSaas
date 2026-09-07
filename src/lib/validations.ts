@@ -116,6 +116,22 @@ export const UpdateProductSchema = z.object({
   active: z.boolean().optional(),
 });
 
+// ─── Bulk import (POS setup) ────────────────────────────────────────────────
+
+export const BulkProductsSchema = z.object({
+  products: z
+    .array(CreateProductSchema)
+    .min(1, "Provide at least one product")
+    .max(1000, "Bulk import limited to 1000 products"),
+});
+
+export const BulkCustomersSchema = z.object({
+  customers: z
+    .array(CreateCustomerSchema)
+    .min(1, "Provide at least one customer")
+    .max(1000, "Bulk import limited to 1000 customers"),
+});
+
 // ─── Owner: Rewards ──────────────────────────────────────────────────────────
 
 const DiscountType = z.enum(["fixed", "percent"], {
@@ -430,6 +446,7 @@ export const CreateTenantSchema = z.object({
 
 export const UpdateTenantSchema = z.object({
   name: name.optional(),
+  slug: slug.optional(),
   brandingConfig: z.record(z.string(), z.unknown()).optional(),
   suspended: z.boolean().optional(),
 });

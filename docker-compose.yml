@@ -15,20 +15,7 @@ services:
       retries: 12
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:-loyalty}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-loyalty}
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      CRON_SECRET: ${CRON_SECRET:-}
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    image: ali00209/saas-loyalty-points-platform:latest
 
 volumes:
   postgres_data:

@@ -1,62 +1,33 @@
 import { defineTheme } from "@astryxdesign/core/theme";
 
 export const loyaltyTheme = defineTheme({
-  name: "loyalty",
-
-  // Color configuration
-  color: {
-    // Primary brand color — warm gold
-    accent: "#F5A623",
-    // Neutral style: warm-toned neutrals
-    neutralStyle: "warm",
-  },
-
-  // Typography configuration
+  name: "loyalty-theme",
+  // accent: single hex, or [light, dark] tuple to seed each scheme separately
+  color: { accent: ["#7B61FF", "#9B85FF"], neutralStyle: "cool" },
   typography: {
-    scale: {
-      base: 16, // Slightly larger base for readability
-      ratio: 1.25, // Generous type scale
-    },
-    body: {
-      family: "Inter, system-ui, -apple-system, sans-serif",
-      weight: "400",
-    },
-    heading: {
-      family: "Outfit, Inter, system-ui, sans-serif",
-      weight: "600",
-    },
+    scale: { base: 14, ratio: 1.2 },
+    body: { family: "Inter", fallbacks: "-apple-system, sans-serif" },
   },
-
-  // Radius configuration — friendly rounded corners
-  radius: {
-    base: 4,
-    multiplier: 1.5,
-  },
-
-  // Explicit token overrides (optional — fine-tune specific values)
+  radius: { base: 0, multiplier: 1 },
+  motion: { fast: 175, medium: 410, ratio: 0.75 },
   tokens: {
-    // Accent variations
-    "--color-accent": ["#F5A623", "#FFD166"],
+    // Explicit overrides take precedence over scale-generated values
+    "--color-background-body": ["#FFFFFF", "#0A0A0A"],
+  },
 
-    // Backgrounds — warm and inviting
-    "--color-background-body": ["#FBF8F3", "#12100E"],
-    "--color-background-surface": ["#FFFFFF", "#1C1A17"],
-
-    // Text — high contrast for readability
-    "--color-text-primary": ["#1A1613", "#F5F0E8"],
-    "--color-text-secondary": ["#6B6258", "#A89F94"],
-
-    // Radius tokens
-    "--radius-container": "16px",
-
-    // Spacing (customize if needed)
-    "--spacing-1": "4px",
-    "--spacing-2": "8px",
-    "--spacing-3": "12px",
-    "--spacing-4": "16px",
-    "--spacing-5": "24px",
-    "--spacing-6": "32px",
-    "--spacing-7": "48px",
-    "--spacing-8": "64px",
+  components: {
+    badge: {
+      "variant:info": {
+        backgroundColor:
+          "var(--astryx-theme-loyalty-theme-color-status-fill-accent)",
+      },
+    },
+    switch: {
+      "status:success": {
+        radius: "0px",
+        backgroundColor:
+          "var(--astryx-theme-loyalty-theme-color-status-fill-accent)",
+      },
+    },
   },
 });

@@ -169,7 +169,7 @@ export default function TransactionsPage() {
   const openRedemption = () => {
     setRedemptionForm({
       ...defaultRedemptionForm,
-      checkoutId: `owner-${globalThis.crypto.randomUUID()}`,
+      checkoutId: `owner-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)}`,
       items: [{ ...defaultRedemptionForm.items[0] }],
     });
     setRedemptionPreview(null);
@@ -611,20 +611,18 @@ export default function TransactionsPage() {
           idKey="id"
           hasHover
           emptyState={
-            <Card padding={6}>
-              <EmptyState
-                title="No checkout redemptions"
-                description="Confirmed checkout discounts will appear here."
-                icon={<Icon icon={RotateCcw} size="lg" />}
-                actions={
-                  <Button
-                    label="Redeem at checkout"
-                    variant="primary"
-                    onClick={openRedemption}
-                  />
-                }
-              />
-            </Card>
+            <EmptyState
+              title="No checkout redemptions"
+              description="Confirmed checkout discounts will appear here."
+              icon={<Icon icon={RotateCcw} size="lg" />}
+              actions={
+                <Button
+                  label="Redeem at checkout"
+                  variant="primary"
+                  onClick={openRedemption}
+                />
+              }
+            />
           }
           columns={[
             {
@@ -852,36 +850,34 @@ export default function TransactionsPage() {
           />
 
           {redemptionPreview && (
-            <Card padding={4}>
-              <VStack gap={2} hAlign="stretch">
-                <Text type="body" weight="bold">
-                  {redemptionPreview.matched
-                    ? `Selected rule: ${redemptionPreview.benefit?.ruleName || "Automatic rule"}`
-                    : "No redemption applied"}
-                </Text>
-                {redemptionPreview.matched && redemptionPreview.benefit ? (
-                  <>
-                    <Text type="supporting" color="secondary">
-                      Discount:{" "}
-                      {formatPKR(redemptionPreview.benefit.discountAmount)} ·
-                      Eligible subtotal:{" "}
-                      {formatPKR(redemptionPreview.benefit.eligibleSubtotal)}
-                    </Text>
-                    <Text type="supporting" color="secondary">
-                      Points cost:{" "}
-                      {redemptionPreview.benefit.pointsCost.toLocaleString()} ·
-                      Remaining balance:{" "}
-                      {redemptionPreview.remainingBalance?.toLocaleString()} pts
-                    </Text>
-                  </>
-                ) : (
+            <VStack gap={2} hAlign="stretch">
+              <Text type="body" weight="bold">
+                {redemptionPreview.matched
+                  ? `Selected rule: ${redemptionPreview.benefit?.ruleName || "Automatic rule"}`
+                  : "No redemption applied"}
+              </Text>
+              {redemptionPreview.matched && redemptionPreview.benefit ? (
+                <>
                   <Text type="supporting" color="secondary">
-                    {redemptionPreview.reason ||
-                      "No matching redemption rule is available."}
+                    Discount:{" "}
+                    {formatPKR(redemptionPreview.benefit.discountAmount)} ·
+                    Eligible subtotal:{" "}
+                    {formatPKR(redemptionPreview.benefit.eligibleSubtotal)}
                   </Text>
-                )}
-              </VStack>
-            </Card>
+                  <Text type="supporting" color="secondary">
+                    Points cost:{" "}
+                    {redemptionPreview.benefit.pointsCost.toLocaleString()} ·
+                    Remaining balance:{" "}
+                    {redemptionPreview.remainingBalance?.toLocaleString()} pts
+                  </Text>
+                </>
+              ) : (
+                <Text type="supporting" color="secondary">
+                  {redemptionPreview.reason ||
+                    "No matching redemption rule is available."}
+                </Text>
+              )}
+            </VStack>
           )}
         </VStack>
         <HStack gap={3} style={{ marginTop: 20 }}>

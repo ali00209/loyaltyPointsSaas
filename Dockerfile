@@ -1,7 +1,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm install --ignore-scripts && npm rebuild
+RUN npm install
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -26,6 +26,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/src ./src
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 
+
 USER nextjs
-EXPOSE 3000
+ENV PORT=9020
+EXPOSE 9020
 CMD ["sh", "-c", "npm run db:migrate && node server.js"]

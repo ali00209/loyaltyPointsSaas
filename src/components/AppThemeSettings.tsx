@@ -10,7 +10,6 @@ import {
   SelectableCard,
   Divider,
   Grid,
-  Selector,
 } from "@astryxdesign/core";
 
 import {

@@ -1,5 +1,5 @@
 {
-  "id": "2edfa415-e78b-42fc-92d5-15b691f1d472",
+  "id": "ae75e932-6398-4916-a783-1fd331dbbc82",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -281,6 +281,28 @@
           "method": "btree",
           "with": {}
         },
+        "customers_phone_tenant_idx": {
+          "name": "customers_phone_tenant_idx",
+          "columns": [
+            {
+              "expression": "phone",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"customers\".\"phone\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "customers_referral_code_tenant_idx": {
           "name": "customers_referral_code_tenant_idx",
           "columns": [
@@ -368,18 +390,12 @@
           "notNull": true,
           "default": false
         },
-        "conditions": {
-          "name": "conditions",
+        "formula_groups": {
+          "name": "formula_groups",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
-          "default": "'{\"match\":\"all\",\"comparisons\":[]}'::jsonb"
-        },
-        "formula": {
-          "name": "formula",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
+          "default": "'[]'::jsonb"
         },
         "points_expire_after_days": {
           "name": "points_expire_after_days",
@@ -619,6 +635,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "redemption_rule_id": {
+          "name": "redemption_rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "event_id": {
           "name": "event_id",
           "type": "uuid",
@@ -693,6 +715,19 @@
           "tableTo": "redemption_rewards",
           "columnsFrom": [
             "reward_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "point_transactions_redemption_rule_id_redemption_rules_id_fk": {
+          "name": "point_transactions_redemption_rule_id_redemption_rules_id_fk",
+          "tableFrom": "point_transactions",
+          "tableTo": "redemption_rules",
+          "columnsFrom": [
+            "redemption_rule_id"
           ],
           "columnsTo": [
             "id"
@@ -799,6 +834,203 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.redemption_checkouts": {
+      "name": "redemption_checkouts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "checkout_id": {
+          "name": "checkout_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "redemption_rule_id": {
+          "name": "redemption_rule_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "points_cost": {
+          "name": "points_cost",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "order_amount": {
+          "name": "order_amount",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "eligible_subtotal": {
+          "name": "eligible_subtotal",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "discount_amount": {
+          "name": "discount_amount",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "discount_type": {
+          "name": "discount_type",
+          "type": "redemption_discount_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "redemption_checkout_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'reserved'"
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "redemption_checkouts_tenant_checkout_idx": {
+          "name": "redemption_checkouts_tenant_checkout_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "checkout_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "redemption_checkouts_tenant_order_idx": {
+          "name": "redemption_checkouts_tenant_order_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"redemption_checkouts\".\"order_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "redemption_checkouts_tenant_id_tenants_id_fk": {
+          "name": "redemption_checkouts_tenant_id_tenants_id_fk",
+          "tableFrom": "redemption_checkouts",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "redemption_checkouts_customer_id_customers_id_fk": {
+          "name": "redemption_checkouts_customer_id_customers_id_fk",
+          "tableFrom": "redemption_checkouts",
+          "tableTo": "customers",
+          "columnsFrom": [
+            "customer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "redemption_checkouts_redemption_rule_id_redemption_rules_id_fk": {
+          "name": "redemption_checkouts_redemption_rule_id_redemption_rules_id_fk",
+          "tableFrom": "redemption_checkouts",
+          "tableTo": "redemption_rules",
+          "columnsFrom": [
+            "redemption_rule_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.redemption_rewards": {
       "name": "redemption_rewards",
       "schema": "",
@@ -825,13 +1057,6 @@
         "points_cost": {
           "name": "points_cost",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reward_type": {
-          "name": "reward_type",
-          "type": "reward_type",
-          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
@@ -897,6 +1122,164 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.redemption_rules": {
+      "name": "redemption_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "redemption_mode": {
+          "name": "redemption_mode",
+          "type": "redemption_mode",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'fixed'"
+        },
+        "discount_type": {
+          "name": "discount_type",
+          "type": "redemption_discount_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discount_value": {
+          "name": "discount_value",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "points_cost": {
+          "name": "points_cost",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"combinator\":\"and\",\"rules\":[]}'::jsonb"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "active_from": {
+          "name": "active_from",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active_until": {
+          "name": "active_until",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "per_customer_limit": {
+          "name": "per_customer_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tenant_usage_limit": {
+          "name": "tenant_usage_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_count": {
+          "name": "usage_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "redemption_rules_tenant_id_tenants_id_fk": {
+          "name": "redemption_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "redemption_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "redemption_rules_discount_value_positive": {
+          "name": "redemption_rules_discount_value_positive",
+          "value": "\"redemption_rules\".\"discount_value\" > 0"
+        },
+        "redemption_rules_points_cost_positive": {
+          "name": "redemption_rules_points_cost_positive",
+          "value": "\"redemption_rules\".\"points_cost\" > 0"
+        },
+        "redemption_rules_limits_positive": {
+          "name": "redemption_rules_limits_positive",
+          "value": "(\"redemption_rules\".\"per_customer_limit\" is null or \"redemption_rules\".\"per_customer_limit\" > 0) and (\"redemption_rules\".\"tenant_usage_limit\" is null or \"redemption_rules\".\"tenant_usage_limit\" > 0)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.tenants": {
@@ -1063,14 +1446,30 @@
         "customer_signup"
       ]
     },
-    "public.reward_type": {
-      "name": "reward_type",
+    "public.redemption_checkout_status": {
+      "name": "redemption_checkout_status",
       "schema": "public",
       "values": [
-        "discount",
-        "gift_card",
-        "physical_item",
-        "store_credit"
+        "reserved",
+        "finalized",
+        "released",
+        "refunded"
+      ]
+    },
+    "public.redemption_discount_type": {
+      "name": "redemption_discount_type",
+      "schema": "public",
+      "values": [
+        "fixed",
+        "percent"
+      ]
+    },
+    "public.redemption_mode": {
+      "name": "redemption_mode",
+      "schema": "public",
+      "values": [
+        "fixed",
+        "per_point"
       ]
     },
     "public.user_role": {

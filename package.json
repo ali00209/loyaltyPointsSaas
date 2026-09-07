@@ -6,6 +6,7 @@
     "build": "next build",
     "start": "next start",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:generate": "npx drizzle-kit generate",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -42,6 +43,8 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@stylexswc/nextjs-plugin": "^0.18.6",
+    "@stylexswc/postcss-plugin": "^0.18.6",
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "22.19.15",
     "@types/pg": "8.18.0",
