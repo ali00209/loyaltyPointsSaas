@@ -378,12 +378,7 @@ export default function TransactionsPage() {
     if (!f.customerId) return false;
     switch (f.eventType) {
       case "purchase":
-        return (
-          f.orderAmount != null &&
-          f.items.some(
-            (it) => it.productId && it.quantity != null && it.unitPrice != null,
-          )
-        );
+        return f.orderAmount != null;
       case "review":
         return Boolean(
           f.purchaseId &&
@@ -1084,7 +1079,6 @@ export default function TransactionsPage() {
                       label="Product"
                       placeholder="Select product"
                       isLabelHidden={i > 0}
-                      isRequired={i === 0}
                       width="100%"
                       options={products.map((p) => ({
                         value: p.id,
@@ -1097,7 +1091,6 @@ export default function TransactionsPage() {
                       label="Qty"
                       placeholder="Qty"
                       isLabelHidden={i > 0}
-                      isRequired={i === 0}
                       min={1}
                       isIntegerOnly
                       hasClear
@@ -1109,7 +1102,6 @@ export default function TransactionsPage() {
                       label="Unit Price (PKR)"
                       placeholder="0.00"
                       isLabelHidden={i > 0}
-                      isRequired={i === 0}
                       min={0}
                       step={0.01}
                       hasClear

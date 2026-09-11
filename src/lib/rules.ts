@@ -17,13 +17,7 @@ export type BinOp = "+" | "-" | "*" | "/";
 export type CmpOp = "==" | "!=" | ">=" | "<=" | ">" | "<";
 
 export type FunctionName =
-  | "floor"
-  | "ceil"
-  | "round"
-  | "min"
-  | "max"
-  | "clamp"
-  | "if";
+  "floor" | "ceil" | "round" | "min" | "max" | "clamp" | "if";
 
 export type Expr =
   | { type: "num"; value: number }
@@ -42,8 +36,8 @@ export type Expr =
 export const isExpr = (v: unknown): v is Expr =>
   Boolean(
     v &&
-      typeof v === "object" &&
-      typeof (v as { type?: unknown }).type === "string",
+    typeof v === "object" &&
+    typeof (v as { type?: unknown }).type === "string",
   );
 
 // ------------------------------ Evaluation ---------------------------------
@@ -69,12 +63,19 @@ function toBoolean(v: unknown): boolean {
 
 function looseEquals(a: unknown, b: unknown): boolean {
   if (a == null || b == null) return a === b;
-  if (typeof a === "number" || typeof b === "number") return toNumber(a) === toNumber(b);
-  if (typeof a === "string" || typeof b === "string") return String(a) === String(b);
+  if (typeof a === "number" || typeof b === "number")
+    return toNumber(a) === toNumber(b);
+  if (typeof a === "string" || typeof b === "string")
+    return String(a) === String(b);
   return a === b;
 }
 
-function compare(op: CmpOp, left: Expr, right: Expr, ctx: EvalContext): boolean {
+function compare(
+  op: CmpOp,
+  left: Expr,
+  right: Expr,
+  ctx: EvalContext,
+): boolean {
   const l = evalExpr(left, ctx);
   const r = evalExpr(right, ctx);
   switch (op) {
@@ -123,9 +124,15 @@ export function evalExpr(expr: Expr, ctx: EvalContext): unknown {
     case "cmp":
       return compare(expr.op, expr.left, expr.right, ctx);
     case "and":
-      return toBoolean(evalExpr(expr.left, ctx)) && toBoolean(evalExpr(expr.right, ctx));
+      return (
+        toBoolean(evalExpr(expr.left, ctx)) &&
+        toBoolean(evalExpr(expr.right, ctx))
+      );
     case "or":
-      return toBoolean(evalExpr(expr.left, ctx)) || toBoolean(evalExpr(expr.right, ctx));
+      return (
+        toBoolean(evalExpr(expr.left, ctx)) ||
+        toBoolean(evalExpr(expr.right, ctx))
+      );
     case "not":
       return !toBoolean(evalExpr(expr.operand, ctx));
     case "call": {
@@ -142,7 +149,10 @@ export function evalExpr(expr: Expr, ctx: EvalContext): unknown {
         case "max":
           return Math.max(...args.map(toNumber));
         case "clamp":
-          return Math.min(Math.max(toNumber(args[0]), toNumber(args[1])), toNumber(args[2]));
+          return Math.min(
+            Math.max(toNumber(args[0]), toNumber(args[1])),
+            toNumber(args[2]),
+          );
         case "if":
           return toBoolean(args[0]) ? args[1] : args[2];
       }
@@ -262,7 +272,8 @@ class Parser {
 
   parse(): Expr {
     const expr = this.parseOr();
-    if (this.peek().kind !== "eof") throw new Error("Unexpected trailing tokens");
+    if (this.peek().kind !== "eof")
+      throw new Error("Unexpected trailing tokens");
     return expr;
   }
 
@@ -291,7 +302,10 @@ class Parser {
   private parseComparison(): Expr {
     let left = this.parseAdditive();
     const tok = this.peek();
-    if (tok.kind === "op" && ["==", "!=", ">=", "<=", ">", "<"].includes(tok.value)) {
+    if (
+      tok.kind === "op" &&
+      ["==", "!=", ">=", "<=", ">", "<"].includes(tok.value)
+    ) {
       this.next();
       const right = this.parseAdditive();
       left = { type: "cmp", op: tok.value as CmpOp, left, right };
@@ -364,7 +378,8 @@ class Parser {
   }
 
   private parseCall(fnName: string): Expr {
-    if (!isFunctionName(fnName)) throw new Error(`Unknown function "${fnName}"`);
+    if (!isFunctionName(fnName))
+      throw new Error(`Unknown function "${fnName}"`);
     this.expectOp("(");
     const args: Expr[] = [];
     let next = this.peek();
@@ -429,17 +444,41 @@ function serializeExpr(expr: Expr, parentPrec = 0): string {
     case "not":
       return `!${serializeExpr(expr.operand, 7)}`;
     case "bin":
-      return wrapBinary(serializeExpr(expr.left, PRECEDENCE[expr.op]), expr.op, serializeExpr(expr.right, PRECEDENCE[expr.op] + 1), PRECEDENCE[expr.op], parentPrec);
+      return wrapBinary(
+        serializeExpr(expr.left, PRECEDENCE[expr.op]),
+        expr.op,
+        serializeExpr(expr.right, PRECEDENCE[expr.op] + 1),
+        PRECEDENCE[expr.op],
+        parentPrec,
+      );
     case "cmp":
-      return wrapBinary(serializeExpr(expr.left, PRECEDENCE[expr.op]), expr.op, serializeExpr(expr.right, PRECEDENCE[expr.op] + 1), PRECEDENCE[expr.op], parentPrec);
+      return wrapBinary(
+        serializeExpr(expr.left, PRECEDENCE[expr.op]),
+        expr.op,
+        serializeExpr(expr.right, PRECEDENCE[expr.op] + 1),
+        PRECEDENCE[expr.op],
+        parentPrec,
+      );
     case "and":
-      return wrapBinary(serializeExpr(expr.left, PRECEDENCE["&&"]), "&&", serializeExpr(expr.right, PRECEDENCE["&&"] + 1), PRECEDENCE["&&"], parentPrec);
+      return wrapBinary(
+        serializeExpr(expr.left, PRECEDENCE["&&"]),
+        "&&",
+        serializeExpr(expr.right, PRECEDENCE["&&"] + 1),
+        PRECEDENCE["&&"],
+        parentPrec,
+      );
     case "or":
-      return wrapBinary(serializeExpr(expr.left, PRECEDENCE["||"]), "||", serializeExpr(expr.right, PRECEDENCE["||"] + 1), PRECEDENCE["||"], parentPrec);
+      return wrapBinary(
+        serializeExpr(expr.left, PRECEDENCE["||"]),
+        "||",
+        serializeExpr(expr.right, PRECEDENCE["||"] + 1),
+        PRECEDENCE["||"],
+        parentPrec,
+      );
     case "call": {
       const args = expr.args.map((a) => serializeExpr(a, 0)).join(", ");
       if (expr.fn === "if" && expr.args.length >= 3) {
-        const [cond, then, else_ ] = expr.args;
+        const [cond, then, else_] = expr.args;
         return `if(${serializeExpr(cond, 0)}, ${serializeExpr(then, 0)}, ${serializeExpr(else_, 0)})`;
       }
       return `${expr.fn}(${args})`;
@@ -447,7 +486,13 @@ function serializeExpr(expr: Expr, parentPrec = 0): string {
   }
 }
 
-function wrapBinary(left: string, op: string, right: string, prec: number, parentPrec: number): string {
+function wrapBinary(
+  left: string,
+  op: string,
+  right: string,
+  prec: number,
+  parentPrec: number,
+): string {
   const s = `${left} ${op} ${right}`;
   return prec < parentPrec ? `(${s})` : s;
 }
@@ -462,8 +507,8 @@ export function serializeExpression(expr: Expr): string {
 export interface StructuredFormula {
   type: "rate" | "flat";
   basis: string;
-  rate: number;        // percentage (e.g. 5 = 5%), divided by 100 at eval for rate mode
-  flatAmount: number;  // fixed points for flat mode
+  rate: number; // percentage (e.g. 5 = 5%), divided by 100 at eval for rate mode
+  flatAmount: number; // fixed points for flat mode
   rounding: "floor" | "round" | "ceil";
   minPoints: number | null;
   maxPoints: number | null;
@@ -499,10 +544,18 @@ export function buildStructuredFormula(f: StructuredFormula): Expr {
     expr = { type: "call", fn: "floor", args: [expr] };
   }
   if (f.minPoints != null) {
-    expr = { type: "call", fn: "max", args: [expr, { type: "num", value: f.minPoints }] };
+    expr = {
+      type: "call",
+      fn: "max",
+      args: [expr, { type: "num", value: f.minPoints }],
+    };
   }
   if (f.maxPoints != null) {
-    expr = { type: "call", fn: "min", args: [expr, { type: "num", value: f.maxPoints }] };
+    expr = {
+      type: "call",
+      fn: "min",
+      args: [expr, { type: "num", value: f.maxPoints }],
+    };
   }
   return expr;
 }
@@ -517,7 +570,10 @@ export type { RuleGroupType, RuleType };
 export const EMPTY_CONDITIONS: RuleGroupType = { combinator: "and", rules: [] };
 
 /** Evaluate a RuleGroupType against a facts object. */
-export function conditionsMatch(conditions: RuleGroupType, ctx: EvalContext): boolean {
+export function conditionsMatch(
+  conditions: RuleGroupType,
+  ctx: EvalContext,
+): boolean {
   return evaluateRuleGroup(conditions, ctx);
 }
 
@@ -527,7 +583,9 @@ function evaluateRuleGroup(group: RuleGroupType, ctx: EvalContext): boolean {
     if ("combinator" in rule) return evaluateRuleGroup(rule, ctx);
     return evaluateRule(rule as RuleType, ctx);
   });
-  return group.combinator === "and" ? results.every(Boolean) : results.some(Boolean);
+  return group.combinator === "and"
+    ? results.every(Boolean)
+    : results.some(Boolean);
 }
 
 function evaluateRule(rule: RuleType, ctx: EvalContext): boolean {
@@ -536,7 +594,11 @@ function evaluateRule(rule: RuleType, ctx: EvalContext): boolean {
   const value = rule.value;
   switch (op) {
     case "isSet":
-      return actual != null && actual !== "" && !(typeof actual === "number" && Number.isNaN(actual));
+      return (
+        actual != null &&
+        actual !== "" &&
+        !(typeof actual === "number" && Number.isNaN(actual))
+      );
     case "=":
     case "eq":
       return looseEquals(actual, value);
@@ -567,8 +629,11 @@ function evaluateRule(rule: RuleType, ctx: EvalContext): boolean {
         .some((v) => looseEquals(actual, v));
     case "between":
     case "notBetween": {
-      const parts = String(value).split(",").map((s) => s.trim());
-      if (parts.length !== 2 || parts[0] === "" || parts[1] === "") return op === "notBetween";
+      const parts = String(value)
+        .split(",")
+        .map((s) => s.trim());
+      if (parts.length !== 2 || parts[0] === "" || parts[1] === "")
+        return op === "notBetween";
       const num = toNumber(actual);
       const lo = toNumber(parts[0]);
       const hi = toNumber(parts[1]);
@@ -588,7 +653,10 @@ export interface EarnRuleConfig {
 }
 
 /** The facts a rule can reference, keyed by event type. */
-export function factsForEvent(eventType: string, perItem: boolean): Record<string, "number" | "string" | "boolean"> {
+export function factsForEvent(
+  eventType: string,
+  perItem: boolean,
+): Record<string, "number" | "string" | "boolean"> {
   if (eventType === "purchase") {
     return perItem
       ? {
@@ -604,7 +672,10 @@ export function factsForEvent(eventType: string, perItem: boolean): Record<strin
           itemCount: "number",
         };
   }
-  const catalogFieldTypes: Record<string, Record<string, "number" | "string" | "boolean">> = {
+  const catalogFieldTypes: Record<
+    string,
+    Record<string, "number" | "string" | "boolean">
+  > = {
     review: {
       productId: "string",
       productPrice: "number",
@@ -621,7 +692,10 @@ export function factsForEvent(eventType: string, perItem: boolean): Record<strin
 
 // ------------------------- Expression helpers ------------------------------
 
-export function collectFields(expr: Expr, out: Set<string> = new Set()): Set<string> {
+export function collectFields(
+  expr: Expr,
+  out: Set<string> = new Set(),
+): Set<string> {
   switch (expr.type) {
     case "field":
       out.add(expr.name);
@@ -662,10 +736,14 @@ export function validateFormula(expr: Expr, allowedFields: Set<string>): void {
 function findInvalidCalls(expr: Expr): string | null {
   switch (expr.type) {
     case "call":
-      if (expr.fn === "if" && expr.args.length !== 3) return "if() needs 3 arguments";
-      if (expr.fn === "clamp" && expr.args.length !== 3) return "clamp() needs 3 arguments";
-      if (expr.fn === "min" && expr.args.length < 1) return "min() needs at least 1 argument";
-      if (expr.fn === "max" && expr.args.length < 1) return "max() needs at least 1 argument";
+      if (expr.fn === "if" && expr.args.length !== 3)
+        return "if() needs 3 arguments";
+      if (expr.fn === "clamp" && expr.args.length !== 3)
+        return "clamp() needs 3 arguments";
+      if (expr.fn === "min" && expr.args.length < 1)
+        return "min() needs at least 1 argument";
+      if (expr.fn === "max" && expr.args.length < 1)
+        return "max() needs at least 1 argument";
       for (const arg of expr.args) {
         const inner = findInvalidCalls(arg);
         if (inner) return inner;
@@ -686,28 +764,53 @@ function findInvalidCalls(expr: Expr): string | null {
 }
 
 const VALID_RB_OPERATORS = new Set([
-  "=", "!=", ">", ">=", "<", "<=", "contains", "in", "between", "notBetween", "isSet",
-  "eq", "neq", "gt", "gte", "lt", "lte",
+  "=",
+  "!=",
+  ">",
+  ">=",
+  "<",
+  "<=",
+  "contains",
+  "in",
+  "between",
+  "notBetween",
+  "isSet",
+  "eq",
+  "neq",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
 ]);
 
-function validateRuleGroup(group: RuleGroupType, allowedFields: Set<string>): void {
-  if (!group || typeof group !== "object") throw new Error("Conditions must be an object");
+function validateRuleGroup(
+  group: RuleGroupType,
+  allowedFields: Set<string>,
+): void {
+  if (!group || typeof group !== "object")
+    throw new Error("Conditions must be an object");
   if (group.combinator !== "and" && group.combinator !== "or") {
     throw new Error('Conditions combinator must be "and" or "or"');
   }
-  if (!Array.isArray(group.rules)) throw new Error("Conditions rules must be an array");
+  if (!Array.isArray(group.rules))
+    throw new Error("Conditions rules must be an array");
   for (const rule of group.rules) {
     if ("combinator" in rule) {
       validateRuleGroup(rule as RuleGroupType, allowedFields);
     } else {
       const r = rule as RuleType;
-      if (!VALID_RB_OPERATORS.has(r.operator)) throw new Error(`Unknown operator "${r.operator}"`);
-      if (!allowedFields.has(r.field)) throw new Error(`Unknown field "${r.field}"`);
+      if (!VALID_RB_OPERATORS.has(r.operator))
+        throw new Error(`Unknown operator "${r.operator}"`);
+      if (!allowedFields.has(r.field))
+        throw new Error(`Unknown field "${r.field}"`);
     }
   }
 }
 
-export function validateConditions(conditions: RuleGroupType, allowedFields: Set<string>): void {
+export function validateConditions(
+  conditions: RuleGroupType,
+  allowedFields: Set<string>,
+): void {
   validateRuleGroup(conditions, allowedFields);
 }
 
@@ -730,7 +833,8 @@ export function validateRedemptionConditions(conditions: RuleGroupType): void {
 }
 
 export function validateRule(rule: EarnRuleConfig): void {
-  if (!rule || typeof rule !== "object") throw new Error("Rule must be an object");
+  if (!rule || typeof rule !== "object")
+    throw new Error("Rule must be an object");
   if (typeof rule.eventType !== "string" || rule.eventType.length === 0) {
     throw new Error("Rule must have an eventType");
   }
@@ -778,7 +882,10 @@ export interface EventCatalogEntry {
   /** Facts available to rules. */
   fields: Record<string, EventFieldDef>;
   /** Derive the dedupe key. Return null for no dedupe (repeatable events). */
-  deriveKey: (customerId: string, payload: Record<string, unknown>) => string | null;
+  deriveKey: (
+    customerId: string,
+    payload: Record<string, unknown>,
+  ) => string | null;
   /** Who is allowed to post this event type. */
   allowedPosters: Poster[];
   /** If set, the event is emitted by the system, not posted. */
@@ -797,11 +904,26 @@ export const EVENT_CATALOG: Record<EventType, EventCatalogEntry> = {
       orderAmount: { type: "number", description: "Order total (PKR)" },
       itemQuantity: { type: "number", description: "Total units in the order" },
       itemCount: { type: "number", description: "Distinct line items" },
-      quantity: { type: "number", description: "Units in this line item (per-item rules)" },
-      unitPrice: { type: "number", description: "Unit price of the line item (per-item rules)" },
-      productId: { type: "string", description: "Product of the line item (per-item rules)" },
-      productPrice: { type: "number", description: "Catalog price of the product (per-item rules)" },
-      productCategory: { type: "string", description: "Category of the product (per-item rules)" },
+      quantity: {
+        type: "number",
+        description: "Units in this line item (per-item rules)",
+      },
+      unitPrice: {
+        type: "number",
+        description: "Unit price of the line item (per-item rules)",
+      },
+      productId: {
+        type: "string",
+        description: "Product of the line item (per-item rules)",
+      },
+      productPrice: {
+        type: "number",
+        description: "Catalog price of the product (per-item rules)",
+      },
+      productCategory: {
+        type: "string",
+        description: "Category of the product (per-item rules)",
+      },
     },
     deriveKey: (_customerId, payload) =>
       str(payload.orderNumber) ? `purchase:${payload.orderNumber}` : null,
@@ -811,9 +933,18 @@ export const EVENT_CATALOG: Record<EventType, EventCatalogEntry> = {
     label: "Visit",
     description: "A customer checks in at a location (QR stamp card).",
     fields: {
-      visitCount: { type: "number", description: "This customer's lifetime visit number" },
-      locationId: { type: "string", description: "Location checked into (optional)" },
-      checkedInAt: { type: "string", description: "Check-in timestamp (optional)" },
+      visitCount: {
+        type: "number",
+        description: "This customer's lifetime visit number",
+      },
+      locationId: {
+        type: "string",
+        description: "Location checked into (optional)",
+      },
+      checkedInAt: {
+        type: "string",
+        description: "Check-in timestamp (optional)",
+      },
     },
     deriveKey: (customerId) =>
       `visit:${customerId}:${new Date().toISOString().slice(0, 10)}`,
@@ -824,11 +955,18 @@ export const EVENT_CATALOG: Record<EventType, EventCatalogEntry> = {
     description: "A customer reviews an item they purchased.",
     fields: {
       productId: { type: "string", description: "The reviewed product" },
-      productPrice: { type: "number", description: "Catalog price of the reviewed product" },
-      productCategory: { type: "string", description: "Category of the reviewed product" },
+      productPrice: {
+        type: "number",
+        description: "Catalog price of the reviewed product",
+      },
+      productCategory: {
+        type: "string",
+        description: "Category of the reviewed product",
+      },
       rating: { type: "number", description: "Star rating (1–5)" },
     },
-    deriveKey: (customerId, payload) => `review:${customerId}:${str(payload.productId)}`,
+    deriveKey: (customerId, payload) =>
+      `review:${customerId}:${str(payload.productId)}`,
     allowedPosters: ["customer", "owner"],
   },
   referral: {
@@ -853,7 +991,10 @@ export const EVENT_CATALOG: Record<EventType, EventCatalogEntry> = {
     label: "Social Share",
     description: "A customer shares the brand on social media.",
     fields: {
-      platform: { type: "string", description: "Platform shared to (e.g. instagram)" },
+      platform: {
+        type: "string",
+        description: "Platform shared to (e.g. instagram)",
+      },
     },
     deriveKey: (customerId, payload) =>
       `share:${customerId}:${str(payload.platform) || "generic"}:${new Date()
@@ -882,37 +1023,52 @@ export function validateEventPayload(
   eventType: EventType,
   payload: unknown,
 ): asserts payload is Record<string, unknown> {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
     throw new Error("Event payload must be an object");
   }
   const p = payload as Record<string, unknown>;
   switch (eventType) {
     case "purchase": {
       const orderAmount = p.orderAmount;
-      if (orderAmount == null || Number.isNaN(Number(orderAmount)) || Number(orderAmount) < 0) {
+      if (
+        orderAmount == null ||
+        Number.isNaN(Number(orderAmount)) ||
+        Number(orderAmount) < 0
+      ) {
         throw new Error("Purchase requires a valid orderAmount");
       }
       if (p.items !== undefined) {
-        if (!Array.isArray(p.items) || p.items.length === 0) {
-          throw new Error("If provided, items must be a non-empty array");
+        if (!Array.isArray(p.items)) {
+          throw new Error("If provided, items must be an array");
         }
         for (const item of p.items) {
-          if (!item || typeof item !== "object") throw new Error("Invalid line item");
+          if (!item || typeof item !== "object")
+            throw new Error("Invalid line item");
           const it = item as Record<string, unknown>;
-          if (typeof it.productId !== "string") throw new Error("Line item requires productId");
+          if (typeof it.productId !== "string")
+            throw new Error("Line item requires productId");
           const qty = Number(it.quantity);
           const price = Number(it.unitPrice);
-          if (!Number.isFinite(qty) || qty <= 0) throw new Error("Line item requires quantity > 0");
-          if (!Number.isFinite(price) || price < 0) throw new Error("Line item requires a unit price");
+          if (!Number.isFinite(qty) || qty <= 0)
+            throw new Error("Line item requires quantity > 0");
+          if (!Number.isFinite(price) || price < 0)
+            throw new Error("Line item requires a unit price");
         }
       }
       break;
     }
     case "review": {
-      if (typeof p.purchaseId !== "string") throw new Error("Review requires purchaseId");
-      if (typeof p.productId !== "string") throw new Error("Review requires productId");
+      if (typeof p.purchaseId !== "string")
+        throw new Error("Review requires purchaseId");
+      if (typeof p.productId !== "string")
+        throw new Error("Review requires productId");
       const rating = Number(p.rating);
-      if (!Number.isFinite(rating) || rating < 1 || rating > 5) throw new Error("Rating must be 1–5");
+      if (!Number.isFinite(rating) || rating < 1 || rating > 5)
+        throw new Error("Rating must be 1–5");
       break;
     }
     case "social_share":

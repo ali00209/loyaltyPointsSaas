@@ -48,7 +48,7 @@ const ownerNavItems = [
     selectedIcon: fillIcon(Package),
   },
   {
-    label: "Rules",
+    label: "Earning Rules",
     href: "/dashboard/rules",
     icon: ShieldCheck,
     selectedIcon: fillIcon(ShieldCheck),
