@@ -43,11 +43,16 @@ import type {
 import QueryBuilder from "react-querybuilder";
 import { AppQueryBuilderElements } from "@/components/AppQueryBuilder";
 import {
-  CheckboxInput,
+  Dialog,
+  DialogHeader,
   FormLayout,
   proportional,
+  ScrollableArea,
+  Step,
+  Stepper,
   Table,
 } from "@astryxdesign/core";
+import { st } from "react-querybuilder/dist/barrel-Imqwf1T2.mjs";
 
 const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
 const SUPPORTED_OPERATORS = [
@@ -366,9 +371,21 @@ function FormulaGroupCard({
               });
             }}
           />
+          {formulaType === "flat" && (
+            <VStack gap={3} hAlign="stretch">
+              <NumberInput
+                label="Points to award"
+                value={group.structured.flatAmount}
+                onChange={(v: number | null) =>
+                  updateStructured({ flatAmount: v ?? 0 })
+                }
+                min={1}
+              />
+            </VStack>
+          )}
 
           {formulaType === "rate" && (
-            <FormLayout direction="horizontal">
+            <>
               <Selector
                 label="Basis (what to take the percentage of)"
                 value={group.structured.basis}
@@ -386,20 +403,7 @@ function FormulaGroupCard({
                 }
                 min={0.01}
               />
-            </FormLayout>
-          )}
-
-          {formulaType === "flat" && (
-            <VStack gap={3} hAlign="stretch">
-              <NumberInput
-                label="Points to award"
-                value={group.structured.flatAmount}
-                onChange={(v: number | null) =>
-                  updateStructured({ flatAmount: v ?? 0 })
-                }
-                min={1}
-              />
-            </VStack>
+            </>
           )}
         </FormLayout>
       </VStack>
@@ -536,46 +540,47 @@ export default function RulesPage() {
 
   if (showWizard) {
     return (
-      <VStack gap={6} hAlign="stretch">
-        <HStack gap={3} vAlign="center">
-          <Button
-            label="Back"
-            variant="ghost"
-            size="sm"
-            icon={<ArrowLeft size="1em" />}
-            onClick={() => {
-              setShowWizard(false);
-              router.replace("/dashboard/rules");
-            }}
-          />
-          <VStack gap={0} hAlign="stretch">
-            <Heading level={2}>
-              {editingRule ? "Edit rule" : "New rule"}
-            </Heading>
-            <Text type="supporting" color="secondary">
-              Step {step + 1} of {maxSteps}: {stepLabels[step]}
-            </Text>
-          </VStack>
-        </HStack>
+      <Dialog
+        isOpen={showWizard}
+        onOpenChange={setShowWizard}
+        purpose="form"
+        width="50%"
+      >
+        <DialogHeader
+          title={editingRule ? "Edit Rule" : "Create Rule"}
+          onOpenChange={setShowWizard}
+        />
+        <Stepper
+          activeStep={step}
+          orientation="horizontal"
+          onStepClick={setStep}
+          horizontalOptions={{
+            minimumStepWidth: 112,
+            collapsedVariant: "withLabelAndControls",
+          }}
+        >
+          <Step step={0} label="Basics" />
+          <Step step={1} label="Formula" />
+          <Step step={2} label="Review" />
+        </Stepper>
 
         {step === 0 && (
-          <Card padding={6}>
-            <VStack gap={4} hAlign="stretch">
-              <Heading level={3}>Basics</Heading>
-              <TextInput
-                label="Rule name"
-                placeholder="e.g. Beverage Bonus"
-                value={state.name}
-                onChange={(v: string) => setState({ ...state, name: v })}
-                isRequired
-              />
-              <TextInput
-                label="Description"
-                placeholder="Short description (optional)"
-                value={state.description}
-                onChange={(v: string) => setState({ ...state, description: v })}
-                isOptional
-              />
+          <FormLayout>
+            <TextInput
+              label="Rule name"
+              placeholder="e.g. Beverage Bonus"
+              value={state.name}
+              onChange={(v: string) => setState({ ...state, name: v })}
+              isRequired
+            />
+            <TextInput
+              label="Description"
+              placeholder="Short description (optional)"
+              value={state.description}
+              onChange={(v: string) => setState({ ...state, description: v })}
+              isOptional
+            />
+            <FormLayout direction="horizontal" style={{ alignItems: "center" }}>
               <Selector
                 label="Event type"
                 value={state.eventType}
@@ -631,97 +636,98 @@ export default function RulesPage() {
                   }
                 />
               )}
-            </VStack>
-          </Card>
+            </FormLayout>
+          </FormLayout>
         )}
 
         {step === 1 && (
-          <VStack gap={4} hAlign="stretch">
-            <Text type="supporting" color="secondary">
-              Add one or more formula groups. Each group has its own conditions
-              and formula. The highest-value matching group wins.
-            </Text>
-            {state.formulaGroups.map((g, i) => (
-              <FormulaGroupCard
-                key={i}
-                group={g}
-                index={i}
-                total={state.formulaGroups.length}
-                eventType={state.eventType}
-                perItem={state.perItem}
-                onChange={updateGroup}
-                onRemove={removeGroup}
-                canRemove={state.formulaGroups.length > 1}
+          <ScrollableArea label="" height={"50vh"}>
+            <VStack gap={4} hAlign="stretch" style={{ marginTop: 20 }}>
+              <Banner
+                status="info"
+                title="Add one or more formula groups. Each group has its own conditions
+            and formula. The highest-value matching group wins."
               />
-            ))}
-            <Button
-              label="Add formula group"
-              variant="secondary"
-              icon={<Plus size="1em" />}
-              onClick={addGroup}
+
+              {state.formulaGroups.map((g, i) => (
+                <FormulaGroupCard
+                  key={i}
+                  group={g}
+                  index={i}
+                  total={state.formulaGroups.length}
+                  eventType={state.eventType}
+                  perItem={state.perItem}
+                  onChange={updateGroup}
+                  onRemove={removeGroup}
+                  canRemove={state.formulaGroups.length > 1}
+                />
+              ))}
+              <Button
+                label="Add formula group"
+                variant="secondary"
+                icon={<Plus size="1em" />}
+                onClick={addGroup}
+              />
+            </VStack>
+          </ScrollableArea>
+        )}
+
+        {step === 2 && (
+          <VStack gap={4} hAlign="stretch">
+            <HStack gap={3} vAlign="center">
+              <Badge
+                variant={eventTypeBadgeColor(state.eventType)}
+                label={eventLabel(state.eventType)}
+              />
+              <Text type="body" weight="bold">
+                {state.name || "(unnamed)"}
+              </Text>
+            </HStack>
+            {state.description && (
+              <Text type="supporting" color="secondary">
+                {state.description}
+              </Text>
+            )}
+            <Text type="body">Per item: {state.perItem ? "Yes" : "No"}</Text>
+            <VStack gap={2} hAlign="stretch">
+              <Text type="label" weight="bold">
+                Formula groups ({state.formulaGroups.length})
+              </Text>
+              {state.formulaGroups.map((g, i) => (
+                <HStack key={i} gap={2} vAlign="center">
+                  <Badge variant="blue" label={`Group ${i + 1}`} />
+                  <Text type="body">
+                    {groupSummaryText(g)}
+                    {isRuleGroupEmpty(g.conditions)
+                      ? " · All events"
+                      : " · Custom conditions"}
+                  </Text>
+                </HStack>
+              ))}
+            </VStack>
+            <Banner
+              status="info"
+              title="When multiple groups match, the one with the highest point value wins."
+              container="card"
+            />
+            <NumberInput
+              label="Points expire after (days, blank = never)"
+              value={state.pointsExpireAfterDays}
+              onChange={(v: number | null) =>
+                setState({ ...state, pointsExpireAfterDays: v })
+              }
+              min={1}
+              isOptional
+            />
+            <Switch
+              label="Active"
+              value={state.active}
+              changeAction={(v: boolean) => setState({ ...state, active: v })}
             />
           </VStack>
         )}
 
-        {step === 2 && (
-          <Card padding={6}>
-            <VStack gap={4} hAlign="stretch">
-              <Heading level={3}>Review &amp; save</Heading>
-              <HStack gap={3} vAlign="center">
-                <Badge
-                  variant={eventTypeBadgeColor(state.eventType)}
-                  label={eventLabel(state.eventType)}
-                />
-                <Text type="body" weight="bold">
-                  {state.name || "(unnamed)"}
-                </Text>
-              </HStack>
-              {state.description && (
-                <Text type="supporting" color="secondary">
-                  {state.description}
-                </Text>
-              )}
-              <Text type="body">Per item: {state.perItem ? "Yes" : "No"}</Text>
-              <VStack gap={2} hAlign="stretch">
-                <Text type="label" weight="bold">
-                  Formula groups ({state.formulaGroups.length})
-                </Text>
-                {state.formulaGroups.map((g, i) => (
-                  <HStack key={i} gap={2} vAlign="center">
-                    <Badge variant="blue" label={`Group ${i + 1}`} />
-                    <Text type="body">
-                      {groupSummaryText(g)}
-                      {isRuleGroupEmpty(g.conditions)
-                        ? " · All events"
-                        : " · Custom conditions"}
-                    </Text>
-                  </HStack>
-                ))}
-              </VStack>
-              <Banner
-                status="info"
-                title="When multiple groups match, the one with the highest point value wins."
-                container="card"
-              />
-              <NumberInput
-                label="Points expire after (days, blank = never)"
-                value={state.pointsExpireAfterDays}
-                onChange={(v: number | null) =>
-                  setState({ ...state, pointsExpireAfterDays: v })
-                }
-                min={1}
-                isOptional
-              />
-              <Switch
-                label="Active"
-                value={state.active}
-                changeAction={(v: boolean) => setState({ ...state, active: v })}
-              />
-            </VStack>
-          </Card>
-        )}
-
-        <HStack gap={3}>
+        <HStack gap={3} style={{ marginTop: 20 }}>
           {step > 0 && (
             <Button
               label="Back"
@@ -733,7 +739,10 @@ export default function RulesPage() {
             <Button
               label="Next"
               variant="primary"
-              onClick={() => setStep(step + 1)}
+              isDisabled={!state.name.trim()}
+              onClick={() => {
+                setStep(step + 1);
+              }}
             />
           ) : (
             <Button
@@ -745,7 +754,8 @@ export default function RulesPage() {
             />
           )}
         </HStack>
-      </VStack>
+        {/*</VStack>*/}
+      </Dialog>
     );
   }
 

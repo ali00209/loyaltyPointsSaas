@@ -672,6 +672,13 @@ export function factsForEvent(
           itemCount: "number",
         };
   }
+  if (eventType === "visit") {
+    return {
+      visitCount: "number",
+      locationId: "string",
+      checkedInAt: "string",
+    };
+  }
   const catalogFieldTypes: Record<
     string,
     Record<string, "number" | "string" | "boolean">

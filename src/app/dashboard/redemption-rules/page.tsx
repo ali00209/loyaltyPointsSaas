@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   Badge,
+  Banner,
   Button,
   Card,
   Dialog,
@@ -12,6 +13,7 @@ import {
   HStack,
   Icon,
   NumberInput,
+  ScrollableArea,
   Selector,
   Switch,
   Table,
@@ -223,125 +225,128 @@ export default function RedemptionRulesPage() {
           title={editing ? "Edit Redemption Rule" : "New Redemption Rule"}
           onOpenChange={setOpen}
         />
-        <FormLayout>
-          <TextInput
-            label="Rule name"
-            value={form.name}
-            onChange={(name) => setForm({ ...form, name })}
-            isRequired
-          />
-          <TextInput
-            label="Description"
-            value={form.description ?? ""}
-            onChange={(description) => setForm({ ...form, description })}
-            isOptional
-          />
-          <FormLayout direction="horizontal">
-            <Selector
-              label="Redemption"
-              options={[
-                { value: "fixed", label: "Fixed points" },
-                { value: "per_point", label: "Per-point conversion" },
-              ]}
-              value={form.redemptionMode}
-              onChange={(redemptionMode) =>
-                setForm({
-                  ...form,
-                  redemptionMode: redemptionMode as Form["redemptionMode"],
-                  discountType: "fixed",
-                })
-              }
+        <ScrollableArea label="" height={"50vh"}>
+          <FormLayout>
+            <TextInput
+              label="Rule name"
+              value={form.name}
+              onChange={(name) => setForm({ ...form, name })}
+              isRequired
             />
-            <Selector
-              label="Discount"
-              options={
-                form.redemptionMode === "per_point"
-                  ? [{ value: "fixed", label: "Fixed PKR per point" }]
-                  : [
-                      { value: "fixed", label: "Fixed amount" },
-                      { value: "percent", label: "Percentage" },
-                    ]
-              }
-              value={form.discountType}
-              onChange={(discountType) =>
-                setForm({
-                  ...form,
-                  discountType: discountType as Form["discountType"],
-                })
-              }
+            <TextInput
+              label="Description"
+              value={form.description ?? ""}
+              onChange={(description) => setForm({ ...form, description })}
+              isOptional
             />
-          </FormLayout>
-          <FormLayout direction="horizontal">
-            <NumberInput
-              label={form.discountType === "percent" ? "Percent" : "Amount"}
-              value={form.discountValue}
-              onChange={(discountValue) =>
-                setForm({ ...form, discountValue: discountValue ?? 0 })
-              }
-              min={0.01}
-            />
-            {form.redemptionMode === "fixed" && (
-              <NumberInput
-                label="Points cost"
-                value={form.pointsCost}
-                onChange={(pointsCost) =>
-                  setForm({ ...form, pointsCost: pointsCost ?? 0 })
+            <FormLayout direction="horizontal">
+              <Selector
+                label="Redemption"
+                options={[
+                  { value: "fixed", label: "Fixed points" },
+                  { value: "per_point", label: "Per-point conversion" },
+                ]}
+                value={form.redemptionMode}
+                onChange={(redemptionMode) =>
+                  setForm({
+                    ...form,
+                    redemptionMode: redemptionMode as Form["redemptionMode"],
+                    discountType: "fixed",
+                  })
                 }
-                min={1}
-                isIntegerOnly
+              />
+              <Selector
+                label="Discount"
+                options={
+                  form.redemptionMode === "per_point"
+                    ? [{ value: "fixed", label: "Fixed PKR per point" }]
+                    : [
+                        { value: "fixed", label: "Fixed amount" },
+                        { value: "percent", label: "Percentage" },
+                      ]
+                }
+                value={form.discountType}
+                onChange={(discountType) =>
+                  setForm({
+                    ...form,
+                    discountType: discountType as Form["discountType"],
+                  })
+                }
+              />
+            </FormLayout>
+            <FormLayout direction="horizontal">
+              <NumberInput
+                label={form.discountType === "percent" ? "Percent" : "Amount"}
+                value={form.discountValue}
+                onChange={(discountValue) =>
+                  setForm({ ...form, discountValue: discountValue ?? 0 })
+                }
+                min={0.01}
+              />
+              {form.redemptionMode === "fixed" && (
+                <NumberInput
+                  label="Points cost"
+                  value={form.pointsCost}
+                  onChange={(pointsCost) =>
+                    setForm({ ...form, pointsCost: pointsCost ?? 0 })
+                  }
+                  min={1}
+                  isIntegerOnly
+                />
+              )}
+            </FormLayout>
+            {form.redemptionMode === "per_point" && (
+              <Banner
+                status="info"
+                title="  The customer redeems as many points as needed for the eligible
+            order, limited by their balance. For example, PKR 0.50 means 100
+            points gives PKR 50.00 off."
               />
             )}
-          </FormLayout>
-          {form.redemptionMode === "per_point" && (
+            <FormLayout direction="horizontal">
+              <NumberInput
+                label="Priority"
+                value={form.priority}
+                onChange={(priority) =>
+                  setForm({ ...form, priority: priority ?? 0 })
+                }
+                isIntegerOnly
+              />
+              <NumberInput
+                label="Per-customer limit"
+                value={form.perCustomerLimit}
+                onChange={(perCustomerLimit) =>
+                  setForm({ ...form, perCustomerLimit })
+                }
+                isOptional
+                hasClear
+                isIntegerOnly
+                min={1}
+              />
+              <NumberInput
+                label="Tenant limit"
+                value={form.tenantUsageLimit}
+                onChange={(tenantUsageLimit) =>
+                  setForm({ ...form, tenantUsageLimit })
+                }
+                isOptional
+                hasClear
+                isIntegerOnly
+                min={1}
+              />
+            </FormLayout>
             <Text type="supporting" color="secondary">
-              The customer redeems as many points as needed for the eligible
-              order, limited by their balance. For example, PKR 0.50 means 100
-              points gives PKR 50.00 off.
+              Conditions are evaluated against the safe checkout facts. Product
+              conditions apply the benefit once to the matching subtotal.
             </Text>
-          )}
-          <FormLayout direction="horizontal">
-            <NumberInput
-              label="Priority"
-              value={form.priority}
-              onChange={(priority) =>
-                setForm({ ...form, priority: priority ?? 0 })
-              }
-              isIntegerOnly
-            />
-            <NumberInput
-              label="Per-customer limit"
-              value={form.perCustomerLimit}
-              onChange={(perCustomerLimit) =>
-                setForm({ ...form, perCustomerLimit })
-              }
-              isOptional
-              hasClear
-              isIntegerOnly
-              min={1}
-            />
-            <NumberInput
-              label="Tenant limit"
-              value={form.tenantUsageLimit}
-              onChange={(tenantUsageLimit) =>
-                setForm({ ...form, tenantUsageLimit })
-              }
-              isOptional
-              hasClear
-              isIntegerOnly
-              min={1}
+            <QueryBuilder
+              query={form.conditions}
+              onQueryChange={(conditions) => setForm({ ...form, conditions })}
+              fields={fields}
+              controlElements={AppQueryBuilderElements}
             />
           </FormLayout>
-          <Text type="supporting" color="secondary">
-            Conditions are evaluated against the safe checkout facts. Product
-            conditions apply the benefit once to the matching subtotal.
-          </Text>
-          <QueryBuilder
-            query={form.conditions}
-            onQueryChange={(conditions) => setForm({ ...form, conditions })}
-            fields={fields}
-            controlElements={AppQueryBuilderElements}
-          />
-        </FormLayout>
+        </ScrollableArea>
         <HStack gap={3} style={{ marginTop: 16 }}>
           <Button
             label="Cancel"

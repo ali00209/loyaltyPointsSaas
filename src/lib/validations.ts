@@ -370,7 +370,7 @@ const FormulaGroupSchema = z.object({
 
 export const CreateRuleSchema = z.object({
   name,
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).nullable().optional(),
   eventType: z.string().min(1, "Event type is required"),
   perItem: z.boolean().optional(),
   formulaGroups: z

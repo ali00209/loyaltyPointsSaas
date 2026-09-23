@@ -36,6 +36,8 @@ export default function HomePage() {
   const registerMutation = useRegister();
   const seedMutation = useSeedDemo();
 
+  const dev = process.env.NODE_ENV === 'development'
+
   useEffect(() => {
     if (!checkingAuth && user) {
       router.push(user.role === "admin" ? "/admin" : "/dashboard");
@@ -190,6 +192,15 @@ export default function HomePage() {
                   width="100%"
                   isLoading={loading}
                 />
+                {dev && (<Button
+                  label='seed'
+                  type="button"
+                  variant="primary"
+                  size="lg"
+                  width="100%"
+                  onClick={handleSeedAndLogin}
+                  isLoading={loading}
+                />)}
               </VStack>
             </form>
 

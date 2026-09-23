@@ -3,7 +3,8 @@ import { defineConfig } from "drizzle-kit";
 export default defineConfig({
   dialect: "postgresql",
   schema: "./src/db/schema.ts",
+  out: './drizzle',
   dbCredentials: {
-    url: "postgresql://postgres:root@127.0.0.1:5432/loyaltyhub",
+    url: "postgresql://postgres:root@127.0.0.1:5432/loyalty",
   },
 });

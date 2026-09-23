@@ -378,11 +378,31 @@ describe("factsForEvent", () => {
   it("gives review facts", () => {
     expect(factsForEvent("review", false)).toHaveProperty("rating");
   });
+
+  it("gives visit facts", () => {
+    expect(factsForEvent("visit", false)).toEqual({
+      visitCount: "number",
+      locationId: "string",
+      checkedInAt: "string",
+    });
+  });
 });
 
 describe("validateRule", () => {
   it("accepts a valid flat-rate rule", () => {
     expect(() => validateRule(rule())).not.toThrow();
+  });
+
+  it("accepts visitCount in a visit rule", () => {
+    expect(() =>
+      validateRule(rule({
+        eventType: "visit",
+        formulaGroups: [{
+          conditions: { combinator: "and", rules: [{ field: "visitCount", operator: ">=", value: 5 }] },
+          formula: { type: "flat", basis: "", rate: 0, flatAmount: 50, rounding: "floor", minPoints: null, maxPoints: null },
+        }],
+      })),
+    ).not.toThrow();
   });
 
   it("accepts a per-item purchase rule", () => {
