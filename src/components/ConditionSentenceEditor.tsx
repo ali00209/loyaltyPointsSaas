@@ -105,25 +105,38 @@ export default function ConditionSentenceEditor({
 
   return (
     <VStack gap={3} hAlign="stretch">
-      {conditions.rules.length > 1 && (
-        <DropdownMenu
-          button={{
-            label: conditions.combinator === "and" ? "match all" : "match any",
-            variant: "ghost",
-            size: "sm",
-          }}
-          items={[
-            {
-              label: "match all",
-              onClick: () => onChange({ ...conditions, combinator: "and" }),
-            },
-            {
-              label: "match any",
-              onClick: () => onChange({ ...conditions, combinator: "or" }),
-            },
-          ]}
-        />
-      )}
+      <HStack>
+        <Card width={"fit-content"}>
+          {conditions.rules.length > 1 && (
+            <DropdownMenu
+              button={{
+                label:
+                  conditions.combinator === "and" ? "match all" : "match any",
+                variant: "ghost",
+                size: "sm",
+              }}
+              items={[
+                {
+                  label: "match all",
+                  onClick: () => onChange({ ...conditions, combinator: "and" }),
+                },
+                {
+                  label: "match any",
+                  onClick: () => onChange({ ...conditions, combinator: "or" }),
+                },
+              ]}
+            />
+          )}
+          <Button
+            label="Add condition"
+            variant="ghost"
+            size="sm"
+            icon={<Plus size="1em" />}
+            onClick={addRule}
+          />
+        </Card>
+      </HStack>
+
       <HStack gap={2} wrap="wrap" vAlign="center">
         {conditions.rules.map((rule, i) => {
           if ("combinator" in rule) return null;
@@ -152,7 +165,7 @@ export default function ConditionSentenceEditor({
                 : Number(r.value) || 0;
 
           return (
-            <Card key={r.id ?? i} style={{ alignItems: "start" }}>
+            <Card key={r.id ?? i} width={"fit-content"}>
               <FormLayout direction="horizontal">
                 <DropdownMenu
                   button={{
@@ -266,14 +279,6 @@ export default function ConditionSentenceEditor({
             </Card>
           );
         })}
-
-        <Button
-          label="Add condition"
-          variant="ghost"
-          size="sm"
-          icon={<Plus size="1em" />}
-          onClick={addRule}
-        />
       </HStack>
 
       {sentence && (

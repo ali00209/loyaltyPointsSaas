@@ -179,7 +179,7 @@ export default function RuleDetailPage({ params }: { params: Promise<{ id: strin
             variant="primary"
             size="sm"
             icon={<Pencil size="1em" />}
-            onClick={() => router.push(`/dashboard/rules?edit=${rule.id}`)}
+            onClick={() => router.push(`/dashboard/rules/form?edit=${rule.id}`)}
           />
           <Button
             label="Delete"
