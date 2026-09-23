@@ -408,6 +408,7 @@ function FormulaGroupCard({
           {formulaType === "flat" && (
             <VStack gap={3} hAlign="stretch">
               <NumberInput
+                units={"pts"}
                 label="Points to award"
                 value={group.structured.flatAmount}
                 onChange={(v: number | null) =>
@@ -470,6 +471,7 @@ function FormulaGroupCard({
               />
               <NumberInput
                 label="Rate (%)"
+                units={"%"}
                 value={group.structured.rate}
                 onChange={(v: number | null) =>
                   updateStructured({ rate: v ?? 1 })

@@ -1,10 +1,14 @@
 import { defineConfig } from "drizzle-kit";
+import { config } from "dotenv";
+import { databaseUrl } from "./src/db/databaseUrl";
+
+config();
 
 export default defineConfig({
   dialect: "postgresql",
   schema: "./src/db/schema.ts",
-  out: './drizzle',
+  out: "./drizzle",
   dbCredentials: {
-    url: "postgresql://postgres:root@127.0.0.1:5432/loyalty",
+    url: databaseUrl(),
   },
 });

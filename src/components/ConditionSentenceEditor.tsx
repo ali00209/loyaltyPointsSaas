@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { HStack, VStack } from "@astryxdesign/core/Layout";
+import { Card, HStack, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { Button } from "@astryxdesign/core/Button";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -19,11 +19,14 @@ import {
   type AuthoringField,
   type AuthoredOperator,
 } from "@/lib/ruleSentence";
+import { FormLayout } from "@astryxdesign/core";
 
 function newRule(field: AuthoringField): RuleType {
   const op: AuthoredOperator = field.type === "string" ? "=" : ">";
   return {
-    id: crypto.randomUUID(),
+    id:
+      globalThis.crypto?.randomUUID?.() ??
+      `r-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`,
     field: field.name,
     operator: op,
     value: field.type === "string" ? "" : 0,
@@ -102,27 +105,26 @@ export default function ConditionSentenceEditor({
 
   return (
     <VStack gap={3} hAlign="stretch">
+      {conditions.rules.length > 1 && (
+        <DropdownMenu
+          button={{
+            label: conditions.combinator === "and" ? "match all" : "match any",
+            variant: "ghost",
+            size: "sm",
+          }}
+          items={[
+            {
+              label: "match all",
+              onClick: () => onChange({ ...conditions, combinator: "and" }),
+            },
+            {
+              label: "match any",
+              onClick: () => onChange({ ...conditions, combinator: "or" }),
+            },
+          ]}
+        />
+      )}
       <HStack gap={2} wrap="wrap" vAlign="center">
-        {conditions.rules.length > 1 && (
-          <DropdownMenu
-            button={{
-              label:
-                conditions.combinator === "and" ? "match all" : "match any",
-              variant: "ghost",
-              size: "sm",
-            }}
-            items={[
-              {
-                label: "match all",
-                onClick: () => onChange({ ...conditions, combinator: "and" }),
-              },
-              {
-                label: "match any",
-                onClick: () => onChange({ ...conditions, combinator: "or" }),
-              },
-            ]}
-          />
-        )}
         {conditions.rules.map((rule, i) => {
           if ("combinator" in rule) return null;
           const r = rule as RuleType;
@@ -150,111 +152,118 @@ export default function ConditionSentenceEditor({
                 : Number(r.value) || 0;
 
           return (
-            <HStack key={r.id ?? i} gap={1} vAlign="center" wrap="wrap">
-              <DropdownMenu
-                button={{ label: field.label, variant: "ghost", size: "sm" }}
-                items={fields.map((f) => {
-                  const newOps = operatorsForField(f);
-                  const keepOperator = (
-                    SENTENCE_OPERATORS[r.operator as AuthoredOperator]
-                      ? r.operator
-                      : ""
-                  ) as AuthoredOperator | "";
-                  const operator = newOps.includes(
-                    keepOperator as AuthoredOperator,
-                  )
-                    ? keepOperator
-                    : newOps[0];
-                  return {
-                    label: f.label,
-                    onClick: () =>
+            <Card key={r.id ?? i} style={{ alignItems: "start" }}>
+              <FormLayout direction="horizontal">
+                <DropdownMenu
+                  button={{
+                    label: field.label,
+                    variant: "ghost",
+                    size: "sm",
+                  }}
+                  items={fields.map((f) => {
+                    const newOps = operatorsForField(f);
+                    const keepOperator = (
+                      SENTENCE_OPERATORS[r.operator as AuthoredOperator]
+                        ? r.operator
+                        : ""
+                    ) as AuthoredOperator | "";
+                    const operator = newOps.includes(
+                      keepOperator as AuthoredOperator,
+                    )
+                      ? keepOperator
+                      : newOps[0];
+                    return {
+                      label: f.label,
+                      onClick: () =>
+                        updateRule(i, {
+                          field: f.name,
+                          operator,
+                          value: f.type === "string" ? "" : 0,
+                        }),
+                    };
+                  })}
+                />
+
+                <DropdownMenu
+                  button={{
+                    label: SENTENCE_OPERATORS[operator].phrase,
+                    variant: "ghost",
+                    size: "sm",
+                  }}
+                  items={ops.map((op) => ({
+                    label: SENTENCE_OPERATORS[op].phrase,
+                    onClick: () => {
+                      const nextBetween =
+                        op === "between" || op === "notBetween";
                       updateRule(i, {
-                        field: f.name,
-                        operator,
-                        value: f.type === "string" ? "" : 0,
-                      }),
-                  };
-                })}
-              />
+                        operator: op,
+                        value:
+                          nextBetween && !isBetween
+                            ? "0,100"
+                            : !nextBetween && isBetween
+                              ? numericValue
+                              : r.value,
+                      });
+                    },
+                  }))}
+                />
 
-              <DropdownMenu
-                button={{
-                  label: SENTENCE_OPERATORS[operator].phrase,
-                  variant: "ghost",
-                  size: "sm",
-                }}
-                items={ops.map((op) => ({
-                  label: SENTENCE_OPERATORS[op].phrase,
-                  onClick: () => {
-                    const nextBetween = op === "between" || op === "notBetween";
-                    updateRule(i, {
-                      operator: op,
-                      value:
-                        nextBetween && !isBetween
-                          ? "0,100"
-                          : !nextBetween && isBetween
-                            ? numericValue
-                            : r.value,
-                    });
-                  },
-                }))}
-              />
-
-              {isBetween ? (
-                <HStack gap={1} vAlign="center" wrap="wrap">
+                {isBetween ? (
+                  <FormLayout direction="horizontal">
+                    <NumberInput
+                      label=""
+                      isLabelHidden
+                      size="sm"
+                      value={toNum(loRaw)}
+                      onChange={(v: number) =>
+                        updateRule(i, { value: `${v},${hiRaw ?? ""}` })
+                      }
+                      width={90}
+                    />
+                    <Text type="supporting" color="secondary">
+                      and
+                    </Text>
+                    <NumberInput
+                      label=""
+                      isLabelHidden
+                      size="sm"
+                      value={toNum(hiRaw)}
+                      onChange={(v: number) =>
+                        updateRule(i, { value: `${loRaw ?? ""},${v}` })
+                      }
+                      width={90}
+                    />
+                  </FormLayout>
+                ) : numeric ? (
                   <NumberInput
                     label=""
                     isLabelHidden
                     size="sm"
-                    value={toNum(loRaw)}
-                    onChange={(v: number) =>
-                      updateRule(i, { value: `${v},${hiRaw ?? ""}` })
-                    }
-                    width={90}
+                    value={numericValue}
+                    onChange={(v: number) => updateRule(i, { value: v })}
+                    width={110}
                   />
-                  <Text type="supporting" color="secondary">
-                    and
-                  </Text>
-                  <NumberInput
+                ) : (
+                  <TextInput
                     label=""
                     isLabelHidden
                     size="sm"
-                    value={toNum(hiRaw)}
-                    onChange={(v: number) =>
-                      updateRule(i, { value: `${loRaw ?? ""},${v}` })
-                    }
-                    width={90}
+                    value={typeof r.value === "string" ? r.value : ""}
+                    onChange={(v: string) => updateRule(i, { value: v })}
+                    width={120}
                   />
-                </HStack>
-              ) : numeric ? (
-                <NumberInput
-                  label=""
-                  isLabelHidden
-                  size="sm"
-                  value={numericValue}
-                  onChange={(v: number) => updateRule(i, { value: v })}
-                  width={110}
-                />
-              ) : (
-                <TextInput
-                  label=""
-                  isLabelHidden
-                  size="sm"
-                  value={typeof r.value === "string" ? r.value : ""}
-                  onChange={(v: string) => updateRule(i, { value: v })}
-                  width={120}
-                />
-              )}
+                )}
 
-              <Button
-                label={`Remove ${field.label} condition`}
-                variant="ghost"
-                size="sm"
-                isIconOnly
-                icon={<Trash2 size="1em" />}
-                onClick={() => removeRule(i)}
-              />
-            </HStack>
+                <Button
+                  label={`Remove ${field.label} condition`}
+                  variant="ghost"
+                  size="sm"
+                  isIconOnly
+                  icon={<Trash2 size="1em" />}
+                  onClick={() => removeRule(i)}
+                />
+              </FormLayout>
+            </Card>
           );
         })}
 
