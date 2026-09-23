@@ -68,7 +68,7 @@ function parseStructuredFormula(raw: unknown): StructuredFormula {
     throw new Error("Structured formula fields are required");
   }
   const s = raw as Record<string, unknown>;
-  const formulaType = (s.type as "rate" | "flat") ?? "rate";
+  const formulaType = (s.type as "rate" | "flat" | "perAmount") ?? "rate";
 
   if (formulaType === "flat") {
     const flatAmount = typeof s.flatAmount === "number" ? s.flatAmount : 0;
@@ -78,6 +78,33 @@ function parseStructuredFormula(raw: unknown): StructuredFormula {
       basis: "",
       rate: 0,
       flatAmount,
+      pointsPerUnit: 0,
+      spendUnit: 0,
+      rounding: (s.rounding as StructuredFormula["rounding"]) ?? "floor",
+      minPoints: typeof s.minPoints === "number" ? s.minPoints : null,
+      maxPoints: typeof s.maxPoints === "number" ? s.maxPoints : null,
+    };
+  }
+
+  if (formulaType === "perAmount") {
+    if (typeof s.basis !== "string" || !s.basis) {
+      throw new Error("Basis is required for points-per-spending formulas");
+    }
+    const pointsPerUnit = typeof s.pointsPerUnit === "number" ? s.pointsPerUnit : 0;
+    const spendUnit = typeof s.spendUnit === "number" ? s.spendUnit : 0;
+    if (pointsPerUnit <= 0) {
+      throw new Error("Points per amount must be greater than 0");
+    }
+    if (spendUnit <= 0) {
+      throw new Error("Spending per unit must be greater than 0");
+    }
+    return {
+      type: "perAmount",
+      basis: s.basis,
+      rate: 0,
+      flatAmount: 0,
+      pointsPerUnit,
+      spendUnit,
       rounding: (s.rounding as StructuredFormula["rounding"]) ?? "floor",
       minPoints: typeof s.minPoints === "number" ? s.minPoints : null,
       maxPoints: typeof s.maxPoints === "number" ? s.maxPoints : null,
@@ -96,6 +123,8 @@ function parseStructuredFormula(raw: unknown): StructuredFormula {
     basis: s.basis,
     rate: s.rate,
     flatAmount: 0,
+    pointsPerUnit: 0,
+    spendUnit: 0,
     rounding: (s.rounding as StructuredFormula["rounding"]) ?? "floor",
     minPoints: typeof s.minPoints === "number" ? s.minPoints : null,
     maxPoints: typeof s.maxPoints === "number" ? s.maxPoints : null,

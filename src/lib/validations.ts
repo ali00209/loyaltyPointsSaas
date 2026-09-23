@@ -350,13 +350,21 @@ const RuleGroupSchema: z.ZodType = z.lazy(() =>
 );
 
 const StructuredFormulaSchema = z.object({
-  type: z.enum(["rate", "flat"]).optional(),
+  type: z.enum(["rate", "flat", "perAmount"]).optional(),
   basis: z.string().optional(),
   rate: z.coerce.number().nonnegative("Rate must be 0 or more").optional(),
   flatAmount: z.coerce
     .number()
     .int()
     .nonnegative("Flat amount must be 0 or more")
+    .optional(),
+  pointsPerUnit: z.coerce
+    .number()
+    .nonnegative("Points per amount must be 0 or more")
+    .optional(),
+  spendUnit: z.coerce
+    .number()
+    .nonnegative("Spending per unit must be 0 or more")
     .optional(),
   rounding: z.enum(["floor", "ceil", "round"]).optional(),
   minPoints: z.coerce.number().int().nonnegative().nullable().optional(),

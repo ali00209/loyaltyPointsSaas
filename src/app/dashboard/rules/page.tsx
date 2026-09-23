@@ -36,12 +36,14 @@ import {
   type StructuredFormula,
 } from "@/lib/rules";
 import type { EarningRule, EarningRuleInput } from "@/types";
-import type {
-  Field,
-  RuleGroupType as RqbRuleGroupType,
-} from "react-querybuilder";
-import QueryBuilder from "react-querybuilder";
-import { AppQueryBuilderElements } from "@/components/AppQueryBuilder";
+import { formatPKR } from "@/lib/money";
+import type { Field } from "react-querybuilder";
+import ConditionSentenceEditor from "@/components/ConditionSentenceEditor";
+import {
+  renderConditionsSentence,
+  renderFormulaGroupSentence,
+  type AuthoringField,
+} from "@/lib/ruleSentence";
 import {
   Dialog,
   DialogHeader,
@@ -52,22 +54,8 @@ import {
   Stepper,
   Table,
 } from "@astryxdesign/core";
-import { st } from "react-querybuilder/dist/barrel-Imqwf1T2.mjs";
 
 const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
-const SUPPORTED_OPERATORS = [
-  { name: "=", label: "=" },
-  { name: "!=", label: "!=" },
-  { name: ">", label: ">" },
-  { name: ">=", label: ">=" },
-  { name: "<", label: "<" },
-  { name: "<=", label: "<=" },
-  { name: "contains", label: "contains" },
-  { name: "in", label: "in" },
-  { name: "between", label: "between" },
-  { name: "notBetween", label: "not between" },
-  { name: "isSet", label: "is set" },
-];
 
 function eventTypeBadgeColor(
   t: string,
@@ -139,6 +127,26 @@ function hasFields(eventType: EventType): boolean {
   return Object.keys(fields).length > 0;
 }
 
+function authoringFields(
+  eventType: EventType,
+  perItem: boolean,
+): AuthoringField[] {
+  return getFieldsForEvent(eventType, perItem).map((f) => ({
+    name: f.name,
+    label: f.label,
+    type: f.type === "number" ? "number" : "string",
+  }));
+}
+
+function fieldLabels(
+  eventType: EventType,
+  perItem: boolean,
+): Record<string, string> {
+  return Object.fromEntries(
+    authoringFields(eventType, perItem).map((f) => [f.name, f.label]),
+  );
+}
+
 function isRuleGroupEmpty(conditions: RuleGroupType): boolean {
   return conditions.rules.length === 0;
 }
@@ -149,6 +157,8 @@ function defaultStructuredFormula(): StructuredFormula {
     basis: "orderAmount",
     rate: 1,
     flatAmount: 0,
+    pointsPerUnit: 1,
+    spendUnit: 100,
     rounding: "floor",
     minPoints: null,
     maxPoints: null,
@@ -169,6 +179,8 @@ function defaultFormulaGroup(
           basis: "",
           rate: 0,
           flatAmount: 1,
+          pointsPerUnit: 0,
+          spendUnit: 0,
           rounding: "floor",
           minPoints: null,
           maxPoints: null,
@@ -178,7 +190,7 @@ function defaultFormulaGroup(
 
 interface FormulaGroupState {
   conditions: RuleGroupType;
-  formulaType: "rate" | "flat";
+  formulaType: "rate" | "flat" | "perAmount";
   structured: StructuredFormula;
 }
 
@@ -213,18 +225,32 @@ function stateToInput(s: WizardState): EarningRuleInput {
         ? {
             ...g.structured,
             type: "flat" as const,
+            basis: "",
             rate: 0,
             rounding: "floor" as const,
             minPoints: null,
             maxPoints: null,
           }
-        : {
-            ...g.structured,
-            type: "rate" as const,
-            rounding: "floor" as const,
-            minPoints: null,
-            maxPoints: null,
-          },
+        : g.formulaType === "perAmount"
+          ? {
+              ...g.structured,
+              type: "perAmount" as const,
+              rate: 0,
+              pointsPerUnit: g.structured.pointsPerUnit ?? 1,
+              spendUnit: g.structured.spendUnit ?? 100,
+              rounding: "floor" as const,
+              minPoints: null,
+              maxPoints: null,
+            }
+          : {
+              ...g.structured,
+              type: "rate" as const,
+              pointsPerUnit: 0,
+              spendUnit: 0,
+              rounding: "floor" as const,
+              minPoints: null,
+              maxPoints: null,
+            },
   }));
   return {
     name: s.name,
@@ -268,9 +294,14 @@ function stateFromRule(r: EarningRule): WizardState {
 
 function groupSummaryText(g: FormulaGroupState): string {
   if (g.formulaType === "flat") {
-    return `${g.structured.flatAmount} pts (flat)`;
+    return `${g.structured.flatAmount} Points`;
   }
-  return `${g.structured.rate}% of ${g.structured.basis || "?"}`;
+  if (g.formulaType === "perAmount") {
+    return `${g.structured.pointsPerUnit ?? 1} Points per ${formatPKR(
+      g.structured.spendUnit ?? 100,
+    )} spent`;
+  }
+  return `${g.structured.rate}% of ${g.structured.basis || "?"} in points`;
 }
 
 function FormulaGroupCard({
@@ -293,7 +324,7 @@ function FormulaGroupCard({
   canRemove: boolean;
 }) {
   const numericFields = getNumericFields(eventType, perItem);
-  const allFields = getFieldsForEvent(eventType, perItem);
+  const allFields = authoringFields(eventType, perItem);
   const hasNumericFields = numericFields.length > 0;
   const hasEventFields = hasFields(eventType);
   const formulaType = hasNumericFields ? group.formulaType : "flat";
@@ -330,18 +361,12 @@ function FormulaGroupCard({
               Leave empty to match all events. Add conditions to filter which
               events qualify for this group.
             </Text>
-            <QueryBuilder
-              fields={allFields}
-              query={group.conditions as RqbRuleGroupType}
-              onQueryChange={(q: RqbRuleGroupType) =>
-                onChange(index, {
-                  ...group,
-                  conditions: q as unknown as RuleGroupType,
-                })
+            <ConditionSentenceEditor
+              conditions={group.conditions}
+              onChange={(conditions: RuleGroupType) =>
+                onChange(index, { ...group, conditions })
               }
-              addRuleToNewGroups
-              operators={SUPPORTED_OPERATORS}
-              controlElements={AppQueryBuilderElements}
+              fields={allFields}
             />
           </VStack>
         )}
@@ -355,18 +380,27 @@ function FormulaGroupCard({
             value={formulaType}
             options={[
               ...(hasNumericFields
-                ? [{ value: "rate", label: "Rate (% of basis)" }]
+                ? [
+                    { value: "rate", label: "Rate (% of basis)" },
+                    { value: "perAmount", label: "Points per spending" },
+                  ]
                 : []),
               { value: "flat", label: "Flat (fixed points)" },
             ]}
             onChange={(v: string) => {
-              const ft = v as "rate" | "flat";
+              const ft = v as "rate" | "flat" | "perAmount";
               onChange(index, {
                 ...group,
                 formulaType: ft,
                 structured: {
                   ...group.structured,
                   type: ft,
+                  ...(ft === "perAmount"
+                    ? {
+                        pointsPerUnit: group.structured.pointsPerUnit ?? 1,
+                        spendUnit: group.structured.spendUnit ?? 100,
+                      }
+                    : {}),
                 },
               });
             }}
@@ -382,6 +416,45 @@ function FormulaGroupCard({
                 min={1}
               />
             </VStack>
+          )}
+
+          {formulaType === "perAmount" && (
+            <FormLayout
+              direction="horizontal"
+              style={{
+                justifyContent: "center",
+                alignContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Text type="body">Earn</Text>
+              <NumberInput
+                label="Points"
+                units={"pts"}
+                isLabelHidden
+                value={group.structured.pointsPerUnit}
+                onChange={(v: number | null) =>
+                  updateStructured({ pointsPerUnit: v ?? 1 })
+                }
+                min={1}
+                size="sm"
+                width={90}
+              />
+              <Text type="body">for every</Text>
+              <NumberInput
+                label="Spending unit"
+                units="Rs"
+                isLabelHidden
+                value={group.structured.spendUnit}
+                onChange={(v: number | null) =>
+                  updateStructured({ spendUnit: v ?? 100 })
+                }
+                min={1}
+                size="sm"
+                width={110}
+              />
+              <Text type="body">spent</Text>
+            </FormLayout>
           )}
 
           {formulaType === "rate" && (
@@ -406,6 +479,24 @@ function FormulaGroupCard({
             </>
           )}
         </FormLayout>
+
+        <Card padding={4}>
+          <VStack gap={1} hAlign="stretch">
+            <Text type="label" weight="bold">
+              Preview
+            </Text>
+            <Text type="body" color="secondary">
+              {renderFormulaGroupSentence(
+                {
+                  formulaType,
+                  structured: group.structured,
+                  conditions: group.conditions,
+                },
+                Object.fromEntries(allFields.map((f) => [f.name, f.label])),
+              )}
+            </Text>
+          </VStack>
+        </Card>
       </VStack>
     </Card>
   );
@@ -434,7 +525,6 @@ export default function RulesPage() {
   const [state, setState] = useState<WizardState>(defaultWizardState);
 
   const maxSteps = 3;
-  const stepLabels = ["Basics", "Formula Groups", "Review"];
 
   const openWizard = (prefill?: WizardState) => {
     setState(prefill ?? defaultWizardState());
@@ -694,13 +784,14 @@ export default function RulesPage() {
                 Formula groups ({state.formulaGroups.length})
               </Text>
               {state.formulaGroups.map((g, i) => (
-                <HStack key={i} gap={2} vAlign="center">
+                <HStack key={i} gap={2} vAlign="center" wrap="wrap">
                   <Badge variant="blue" label={`Group ${i + 1}`} />
                   <Text type="body">
-                    {groupSummaryText(g)}
                     {isRuleGroupEmpty(g.conditions)
-                      ? " · All events"
-                      : " · Custom conditions"}
+                      ? ` · For ${state.eventType}`
+                      : ` · When ${renderConditionsSentence(g.conditions, fieldLabels(state.eventType, state.perItem))}`}
+                    {" Customer Earn "}
+                    {groupSummaryText(g)}
                   </Text>
                 </HStack>
               ))}

@@ -505,10 +505,12 @@ export function serializeExpression(expr: Expr): string {
 // --------------------------- Structured builder ----------------------------
 
 export interface StructuredFormula {
-  type: "rate" | "flat";
+  type: "rate" | "flat" | "perAmount";
   basis: string;
   rate: number; // percentage (e.g. 5 = 5%), divided by 100 at eval for rate mode
   flatAmount: number; // fixed points for flat mode
+  pointsPerUnit?: number; // perAmount: points awarded per spendUnit of basis
+  spendUnit?: number; // perAmount: amount of basis that earns pointsPerUnit points
   rounding: "floor" | "round" | "ceil";
   minPoints: number | null;
   maxPoints: number | null;
@@ -525,6 +527,17 @@ export function buildStructuredFormula(f: StructuredFormula): Expr {
 
   if (f.type === "flat") {
     expr = { type: "num", value: f.flatAmount };
+  } else if (f.type === "perAmount") {
+    // perAmount mode: basis × (pointsPerUnit / spendUnit)
+    const basisNode: Expr = { type: "field", name: f.basis };
+    const pointsPer = f.pointsPerUnit ?? 0;
+    const spend = f.spendUnit ?? 0;
+    expr = {
+      type: "bin",
+      op: "*",
+      left: basisNode,
+      right: { type: "num", value: spend > 0 ? pointsPer / spend : 0 },
+    };
   } else {
     // Rate mode: basis × (rate / 100)
     const basisNode: Expr = { type: "field", name: f.basis };
@@ -861,7 +874,16 @@ export function validateRule(rule: EarnRuleConfig): void {
       throw new Error("Each formula group must have a formula");
     }
     validateConditions(group.conditions, allowed);
-    validateFormula(buildStructuredFormula(group.formula), allowed);
+    const formula = group.formula;
+    if (formula.type === "perAmount") {
+      if (!((formula.pointsPerUnit ?? 0) > 0)) {
+        throw new Error("pointsPerUnit must be greater than 0");
+      }
+      if (!((formula.spendUnit ?? 0) > 0)) {
+        throw new Error("spendUnit must be greater than 0");
+      }
+    }
+    validateFormula(buildStructuredFormula(formula), allowed);
   }
 }
 
