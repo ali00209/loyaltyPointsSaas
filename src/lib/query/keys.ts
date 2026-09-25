@@ -32,6 +32,15 @@ export const queryKeys = {
     tenant: (id: string) => ["admin", "tenants", id] as const,
     tenantCustomers: (id: string) => ["admin", "tenants", id, "customers"] as const,
     tenantTransactions: (id: string) => ["admin", "tenants", id, "transactions"] as const,
+    plans: ["admin", "plans"] as const,
+    subscriptions: ["admin", "subscriptions"] as const,
+    invoices: ["admin", "invoices"] as const,
+    invoice: (id: string) => ["admin", "invoices", id] as const,
+  },
+  billing: {
+    plans: ["billing", "plans"] as const,
+    subscription: ["billing", "subscription"] as const,
+    invoices: ["billing", "invoices"] as const,
   },
   portal: {
     tenant: (slug: string) => ["portal", "tenant", slug] as const,

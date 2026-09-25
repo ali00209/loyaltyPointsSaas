@@ -29,6 +29,8 @@ import type {
 import { SearchIcon } from "lucide-react";
 import AppProfileSetting from "@/components/AppProfileSetting";
 import AppApiSetting from "@/components/AppApiSettings";
+import AppBillingSetting from "@/components/AppBillingSetting";
+import AppInvoicesSetting from "@/components/AppInvoicesSetting";
 import { EmptyState } from "@astryxdesign/core";
 import AppHeader from "@/components/AppHeader";
 import AppThemeSetting from "@/components/AppThemeSettings";
@@ -112,6 +114,10 @@ export default function SettingsTemplate() {
           )}
           {activeNav === "Profile" ? (
             <AppProfileSetting />
+          ) : activeNav === "Billing" ? (
+            <AppBillingSetting />
+          ) : activeNav === "Invoices" ? (
+            <AppInvoicesSetting />
           ) : activeNav === "API" ? (
             <AppApiSetting />
           ) : activeNav === "Theme" ? (

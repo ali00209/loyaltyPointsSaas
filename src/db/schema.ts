@@ -34,6 +34,23 @@ export const redemptionModeEnum = pgEnum("redemption_mode", [
   "per_point",
 ]);
 
+export const billingCycleEnum = pgEnum("billing_cycle", [
+  "weekly",
+  "monthly",
+]);
+
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "pending",
+  "active",
+  "canceled",
+]);
+
+export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "draft",
+  "issued",
+  "voided",
+]);
+
 export const redemptionCheckoutStatusEnum = pgEnum(
   "redemption_checkout_status",
   ["reserved", "finalized", "released", "refunded"],
@@ -359,4 +376,120 @@ export const customerRuleBalances = pgTable("customer_rule_balances", {
   remainingPoints: integer("remaining_points").notNull(),
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Billing (SaaS platform charges merchants) ──────────────────────────────
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: string;
+}
+
+// Plan templates the platform admin offers. Owners request a plan; the admin
+// approves it into an active subscription.
+export const plans = pgTable("plans", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  billingCycle: billingCycleEnum("billing_cycle").notNull().default("monthly"),
+  taxPercent: numeric("tax_percent", { precision: 5, scale: 2 })
+    .notNull()
+    .default("0"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type SubscriptionStatus = "pending" | "active" | "canceled";
+
+// One active subscription per tenant (partial unique index). pending = owner
+// requested a plan, admin approves it.
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id, { onDelete: "cascade" }),
+    status: subscriptionStatusEnum("status").notNull().default("pending"),
+    nextBillingAt: timestamp("next_billing_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("subscriptions_active_tenant_idx")
+      .on(table.tenantId)
+      .where(sql`${table.status} = 'active'`),
+  ],
+);
+
+// Invoices are frozen once issued (real-invoice semantics). status is the
+// base state; the effective state (due / overdue / partially_paid / paid) is
+// derived from payments vs total.
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    invoiceNumber: text("invoice_number").unique(),
+    status: invoiceStatusEnum("status").notNull().default("draft"),
+    lineItems: jsonb("line_items")
+      .$type<InvoiceLineItem[]>()
+      .notNull()
+      .default([]),
+    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull(),
+    taxPercent: numeric("tax_percent", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    taxAmount: numeric("tax_amount", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    issuedAt: timestamp("issued_at"),
+    dueAt: timestamp("due_at"),
+    periodStart: text("period_start"),
+    periodEnd: text("period_end"),
+    memo: text("memo"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "invoices_total_positive",
+      sql`${table.total} >= 0`,
+    ),
+    check(
+      "invoices_amounts_match",
+      sql`${table.subtotal} + ${table.taxAmount} = ${table.total}`,
+    ),
+  ],
+);
+
+// Manual payment recordings against an invoice (offline: bank transfer, cash…).
+export const payments = pgTable("payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  invoiceId: uuid("invoice_id")
+    .notNull()
+    .references(() => invoices.id, { onDelete: "cascade" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  method: text("method").notNull(),
+  reference: text("reference"),
+  note: text("note"),
+  paidAt: timestamp("paid_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Atomic per-platform counters (single counter row: "invoice").
+export const billingCounters = pgTable("billing_counters", {
+  key: text("key").primaryKey(),
+  value: integer("value").notNull().default(0),
 });

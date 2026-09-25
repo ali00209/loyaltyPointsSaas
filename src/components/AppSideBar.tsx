@@ -11,6 +11,8 @@ import {
   Building2,
   Settings,
   QrCode,
+  CreditCard,
+  Receipt,
 } from "lucide-react";
 import type { IconType } from "@astryxdesign/core/Icon";
 import {
@@ -97,6 +99,18 @@ const adminNavItems = [
     href: "/admin/tenants",
     icon: Building2,
     selectedIcon: fillIcon(Building2),
+  },
+  {
+    label: "Plans",
+    href: "/admin/plans",
+    icon: CreditCard,
+    selectedIcon: fillIcon(CreditCard),
+  },
+  {
+    label: "Invoices",
+    href: "/admin/invoices",
+    icon: Receipt,
+    selectedIcon: fillIcon(Receipt),
   },
 ];
 

@@ -2,24 +2,33 @@
 
 import {
   ApiError,
+  applySubscriptionAction,
   changePassword,
   createCustomer,
+  createInvoice,
+  createPlan,
   createProduct,
   createReward,
   createRule,
   createTenant,
   createTransaction,
   deleteCustomer,
+  deletePlan,
   deleteProduct,
   deleteReward,
   deleteRule,
+  fetchAdminInvoices,
   fetchAdminOverview,
+  fetchAdminPlans,
+  fetchAdminSubscriptions,
   fetchAdminTenant,
   fetchAdminTenantCustomers,
   fetchAdminTenantTransactions,
   fetchAdminTenants,
   fetchApiKey,
   fetchAssignedRules,
+  fetchBillingInvoices,
+  fetchBillingPlans,
   fetchCurrentUser,
   fetchCustomers,
   fetchDashboard,
@@ -30,7 +39,9 @@ import {
   fetchProducts,
   fetchRewards,
   fetchStoreQr,
+  fetchSubscription,
   fetchTransactions,
+  issueInvoice,
   login,
   logout,
   portalLogin,
@@ -39,6 +50,7 @@ import {
   postEvent,
   postPortalEvent,
   postPortalReview,
+  recordPayment,
   regenerateApiKey,
   register,
   createRedemptionRule,
@@ -48,15 +60,19 @@ import {
   previewOwnerCheckout,
   confirmOwnerCheckout,
   refundOwnerCheckout,
+  requestSubscription,
   seedDemoData,
   toggleRuleAssignment,
   updateCustomer,
+  updatePlan,
   updateProduct,
   updateReward,
   updateRedemptionRule,
   updateRule,
   updateTenant,
   updateProfile,
+  updateInvoiceDraft,
+  voidInvoice,
 } from "@/lib/api";
 import type {
   AdminOverview,
@@ -68,7 +84,10 @@ import type {
   CustomerInput,
   EarningRule,
   EarningRuleInput,
+  InvoiceInput,
   LoginInput,
+  PaymentInput,
+  PlanInput,
   PostEventInput,
   Product,
   ProductInput,
@@ -79,6 +98,7 @@ import type {
   OwnerCheckoutInput,
   RegisterInput,
   RewardInput,
+  SubscriptionInput,
   TransactionInput,
   UpdateProfileInput,
   UpdateTenantInput,
@@ -527,6 +547,157 @@ export function useAdminTenantTransactions(id: string) {
 }
 
 export type { AdminOverview, AdminTenant, AdminTenantDetail, EarningRule, RedemptionReward };
+
+// --- Billing (owner) ---
+
+export function useBillingPlans() {
+  return useQuery({
+    queryKey: queryKeys.billing.plans,
+    queryFn: fetchBillingPlans,
+  });
+}
+
+export function useSubscription() {
+  return useQuery({
+    queryKey: queryKeys.billing.subscription,
+    queryFn: fetchSubscription,
+  });
+}
+
+export function useRequestSubscription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SubscriptionInput) => requestSubscription(input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.billing.subscription });
+    },
+  });
+}
+
+export function useBillingInvoices() {
+  return useQuery({
+    queryKey: queryKeys.billing.invoices,
+    queryFn: fetchBillingInvoices,
+  });
+}
+
+// --- Billing (admin) ---
+
+export function useAdminPlans() {
+  return useQuery({
+    queryKey: queryKeys.admin.plans,
+    queryFn: fetchAdminPlans,
+  });
+}
+
+export function useCreatePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PlanInput) => createPlan(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.plans });
+    },
+  });
+}
+
+export function useUpdatePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: PlanInput }) => updatePlan(id, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.plans });
+    },
+  });
+}
+
+export function useDeletePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deletePlan(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.plans });
+    },
+  });
+}
+
+export function useAdminSubscriptions() {
+  return useQuery({
+    queryKey: queryKeys.admin.subscriptions,
+    queryFn: fetchAdminSubscriptions,
+  });
+}
+
+export function useSubscriptionAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "cancel" }) =>
+      applySubscriptionAction(id, action),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.subscriptions });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.invoices });
+    },
+  });
+}
+
+export function useAdminInvoices() {
+  return useQuery({
+    queryKey: queryKeys.admin.invoices,
+    queryFn: fetchAdminInvoices,
+  });
+}
+
+export function useCreateAdminInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: InvoiceInput) => createInvoice(input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.invoices });
+    },
+  });
+}
+
+export function useUpdateAdminInvoiceDraft() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: InvoiceInput }) =>
+      updateInvoiceDraft(id, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.invoices });
+    },
+  });
+}
+
+export function useIssueInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => issueInvoice(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.invoices });
+    },
+  });
+}
+
+export function useVoidInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => voidInvoice(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.invoices });
+    },
+  });
+}
+
+export function useRecordPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ invoiceId, input }: { invoiceId: string; input: PaymentInput }) =>
+      recordPayment(invoiceId, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.invoices });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.invoices });
+    },
+  });
+}
 
 // --- Events ---
 

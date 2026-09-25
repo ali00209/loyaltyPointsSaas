@@ -465,6 +465,59 @@ export const CreateApiKeySchema = z.object({
   name: z.string().max(200).optional(),
 });
 
+// ─── Billing ─────────────────────────────────────────────────────────────────
+
+const billingCycle = z.enum(["weekly", "monthly"]);
+const taxPercent = z.coerce.number().min(0).max(100).optional();
+
+export const CreatePlanSchema = z.object({
+  name: z.string().min(1, "Plan name is required").max(200),
+  price: z.coerce.number().positive("Price must be greater than 0"),
+  billingCycle: billingCycle.optional().default("monthly"),
+  taxPercent: taxPercent.default(0),
+  active: z.boolean().optional(),
+});
+
+export const UpdatePlanSchema = z.object({
+  id: uuid,
+  name: z.string().min(1).max(200).optional(),
+  price: z.coerce.number().positive().optional(),
+  billingCycle: billingCycle.optional(),
+  taxPercent: taxPercent,
+  active: z.boolean().optional(),
+});
+
+export const SelectPlanSchema = z.object({
+  planId: uuid,
+});
+
+const lineItem = z.object({
+  description: z.string().min(1, "Line description is required").max(500),
+  quantity: z.coerce.number().positive("Quantity must be greater than 0").optional().default(1),
+  unitPrice: z.coerce.number().nonnegative("Unit price cannot be negative"),
+});
+
+export const CreateInvoiceSchema = z.object({
+  tenantId: uuid,
+  lineItems: z.array(lineItem).min(1, "At least one line item is required"),
+  taxPercent: taxPercent.default(0),
+  memo: z.string().max(500).nullable().optional(),
+});
+
+export const UpdateInvoiceDraftSchema = z.object({
+  lineItems: z.array(lineItem).min(1, "At least one line item is required"),
+  taxPercent: taxPercent.default(0),
+  memo: z.string().max(500).nullable().optional(),
+});
+
+export const RecordPaymentSchema = z.object({
+  amount: z.coerce.number().positive("Payment must be greater than 0"),
+  method: z.string().min(1, "Payment method is required").max(100),
+  reference: z.string().max(200).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+  paidAt: z.string().nullable().optional(),
+});
+
 // ─── Parse helper ────────────────────────────────────────────────────────────
 
 type ZodSchema = z.ZodType<unknown>;
