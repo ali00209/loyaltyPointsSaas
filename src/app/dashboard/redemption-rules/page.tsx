@@ -22,6 +22,7 @@ import {
   VStack,
   proportional,
 } from "@astryxdesign/core";
+import { DateTimeInput, type ISODateTimeString } from "@astryxdesign/core/DateTimeInput";
 import { Percent, ShieldCheck } from "lucide-react";
 import { useMemo } from "react";
 import type { RuleGroupType } from "react-querybuilder";
@@ -68,9 +69,21 @@ const defaultForm: Form = {
   priority: 0,
   conditions: emptyConditions,
   active: true,
+  activeFrom: null,
+  activeUntil: null,
   perCustomerLimit: null,
   tenantUsageLimit: null,
 };
+
+function isoToInput(
+  iso: string | null | undefined,
+): ISODateTimeString | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` as ISODateTimeString;
+}
 
 export default function RedemptionRulesPage() {
   const fieldLabels = useMemo(
@@ -103,6 +116,8 @@ export default function RedemptionRulesPage() {
       priority: rule.priority,
       conditions: rule.conditions,
       active: rule.active,
+      activeFrom: rule.activeFrom,
+      activeUntil: rule.activeUntil,
       perCustomerLimit: rule.perCustomerLimit,
       tenantUsageLimit: rule.tenantUsageLimit,
     });
@@ -250,89 +265,96 @@ export default function RedemptionRulesPage() {
             <Text type="label" weight="bold">
               Redemption
             </Text>
-            <HStack gap={2} wrap="wrap" vAlign="center">
-              <DropdownMenu
-                button={{
-                  label:
-                    form.redemptionMode === "fixed"
-                      ? "redeem a fixed point cost"
-                      : "redeem at a rate of",
-                  variant: "ghost",
-                  size: "sm",
+            <Card>
+              <FormLayout
+                direction="horizontal"
+                style={{
+                  alignItems: "center",
                 }}
-                items={[
-                  {
-                    label: "redeem a fixed point cost",
-                    onClick: () =>
-                      setForm({
-                        ...form,
-                        redemptionMode: "fixed",
-                        discountType: "fixed",
-                      }),
-                  },
-                  {
-                    label: "redeem at a rate of",
-                    onClick: () =>
-                      setForm({
-                        ...form,
-                        redemptionMode: "per_point",
-                        discountType: "fixed",
-                      }),
-                  },
-                ]}
-              />
-              <Text type="supporting">Cost :</Text>
-              {form.redemptionMode === "fixed" ? (
-                <>
-                  <NumberInput
-                    label="Points to redeem"
-                    units={"pts"}
-                    isLabelHidden
-                    size="sm"
-                    value={form.pointsCost}
-                    onChange={(pointsCost) => setForm({ ...form, pointsCost })}
-                    min={1}
-                    isIntegerOnly
-                    width={110}
-                  />
-                  <Text type="supporting">points to get</Text>
-                  <NumberInput
-                    label="Discount value"
-                    units={form.discountType === "percent" ? "%" : "Rs"}
-                    isLabelHidden
-                    size="sm"
-                    value={form.discountValue}
-                    onChange={(discountValue) =>
-                      setForm({ ...form, discountValue })
-                    }
-                    min={0.01}
-                    width={110}
-                  />
-                  <DropdownMenu
-                    button={{
-                      label: form.discountType === "percent" ? "%" : "PKR",
-                      variant: "ghost",
-                      size: "sm",
-                    }}
-                    items={[
-                      {
-                        label: "PKR",
-                        onClick: () =>
-                          setForm({ ...form, discountType: "fixed" }),
-                      },
-                      {
-                        label: "%",
-                        onClick: () =>
-                          setForm({ ...form, discountType: "percent" }),
-                      },
-                    ]}
-                  />
-                  <Text type="supporting">off an eligible order</Text>
-                </>
-              ) : (
-                <>
+              >
+                <DropdownMenu
+                  button={{
+                    label:
+                      form.redemptionMode === "fixed"
+                        ? "redeem a fixed point cost"
+                        : "redeem at a rate of",
+                    variant: "ghost",
+                    size: "sm",
+                  }}
+                  items={[
+                    {
+                      label: "redeem a fixed point cost",
+                      onClick: () =>
+                        setForm({
+                          ...form,
+                          redemptionMode: "fixed",
+                          discountType: "fixed",
+                        }),
+                    },
+                    {
+                      label: "redeem at a rate of",
+                      onClick: () =>
+                        setForm({
+                          ...form,
+                          redemptionMode: "per_point",
+                          discountType: "fixed",
+                        }),
+                    },
+                  ]}
+                />
+                {form.redemptionMode === "fixed" ? (
+                  <HStack gap={2} align="center">
+                    <NumberInput
+                      label="Points to redeem"
+                      units={"pts"}
+                      isLabelHidden
+                      size="sm"
+                      value={form.pointsCost}
+                      onChange={(pointsCost) =>
+                        setForm({ ...form, pointsCost })
+                      }
+                      min={1}
+                      width={"14%"}
+                      isIntegerOnly
+                    />
+                    <Text type="supporting">to get</Text>
+                    <NumberInput
+                      label="Discount value"
+                      units={form.discountType === "percent" ? "%" : "Rs"}
+                      isLabelHidden
+                      size="sm"
+                      value={form.discountValue}
+                      onChange={(discountValue) =>
+                        setForm({ ...form, discountValue })
+                      }
+                      min={0.01}
+                      width={"10%"}
+                    />
+                    <DropdownMenu
+                      button={{
+                        label: form.discountType === "percent" ? "%" : "Rs",
+                        variant: "ghost",
+                        size: "sm",
+                      }}
+                      items={[
+                        {
+                          label: "Rs",
+                          onClick: () =>
+                            setForm({ ...form, discountType: "fixed" }),
+                        },
+                        {
+                          label: "%",
+                          onClick: () =>
+                            setForm({ ...form, discountType: "percent" }),
+                        },
+                      ]}
+                    />
+                    <Text type="supporting">off an eligible order</Text>
+                  </HStack>
+                ) : (
                   <NumberInput
                     label="Value per point"
+                    units={"Rs off per point"}
                     isLabelHidden
                     size="sm"
                     value={form.discountValue}
@@ -340,12 +362,10 @@ export default function RedemptionRulesPage() {
                       setForm({ ...form, discountValue })
                     }
                     min={0.001}
-                    width={110}
                   />
-                  <Text type="supporting">PKR off per point</Text>
-                </>
-              )}
-            </HStack>
+                )}
+              </FormLayout>
+            </Card>
             {form.redemptionMode === "per_point" && (
               <Banner
                 status="info"
@@ -357,96 +377,128 @@ export default function RedemptionRulesPage() {
             <Text type="label" weight="bold">
               Usage
             </Text>
-            <HStack gap={2} wrap="wrap" vAlign="center">
-              <Text type="supporting">apply at priority</Text>
-              <NumberInput
-                label="Priority"
-                isLabelHidden
-                size="sm"
-                value={form.priority}
-                onChange={(priority) => setForm({ ...form, priority })}
-                isIntegerOnly
-                width={90}
+            <Card width={"fit-content"}>
+              <VStack gap={2} align="end">
+                <HStack gap={2} align="center">
+                  <Text type="supporting">Priority</Text>
+                  <NumberInput
+                    label="Priority"
+                    isLabelHidden
+                    size="sm"
+                    value={form.priority}
+                    onChange={(priority) => setForm({ ...form, priority })}
+                    isIntegerOnly
+                    width={90}
+                  />
+                </HStack>
+                <HStack>
+                  <DropdownMenu
+                    button={{
+                      label:
+                        form.perCustomerLimit == null
+                          ? "use it any number of times"
+                          : `use it up to ${form.perCustomerLimit} times`,
+                      variant: "ghost",
+                      size: "sm",
+                    }}
+                    items={[
+                      {
+                        label: "use it any number of times",
+                        onClick: () =>
+                          setForm({ ...form, perCustomerLimit: null }),
+                      },
+                      {
+                        label: "set a per-customer limit",
+                        onClick: () =>
+                          setForm({
+                            ...form,
+                            perCustomerLimit: form.perCustomerLimit ?? 1,
+                          }),
+                      },
+                    ]}
+                  />
+                  {form.perCustomerLimit != null && (
+                    <NumberInput
+                      label="Per-customer limit"
+                      isLabelHidden
+                      size="sm"
+                      value={form.perCustomerLimit}
+                      onChange={(perCustomerLimit) =>
+                        setForm({ ...form, perCustomerLimit })
+                      }
+                      isIntegerOnly
+                      min={1}
+                      width={90}
+                    />
+                  )}
+                </HStack>
+                <HStack>
+                  <DropdownMenu
+                    button={{
+                      label:
+                        form.tenantUsageLimit == null
+                          ? "unlimited redemptions in total"
+                          : `at most ${form.tenantUsageLimit} redemptions in total`,
+                      variant: "ghost",
+                      size: "sm",
+                    }}
+                    items={[
+                      {
+                        label: "unlimited redemptions in total",
+                        onClick: () =>
+                          setForm({ ...form, tenantUsageLimit: null }),
+                      },
+                      {
+                        label: "set a total limit",
+                        onClick: () =>
+                          setForm({
+                            ...form,
+                            tenantUsageLimit: form.tenantUsageLimit ?? 1,
+                          }),
+                      },
+                    ]}
+                  />
+
+                  {form.tenantUsageLimit != null && (
+                    <NumberInput
+                      label="Tenant limit"
+                      isLabelHidden
+                      size="sm"
+                      value={form.tenantUsageLimit}
+                      onChange={(tenantUsageLimit) =>
+                        setForm({ ...form, tenantUsageLimit })
+                      }
+                      isIntegerOnly
+                      min={1}
+                      width={90}
+                    />
+                  )}
+                </HStack>
+              </VStack>
+            </Card>
+            <Text type="label" weight="bold">
+              Schedule
+            </Text>
+            <FormLayout>
+              <DateTimeInput
+                label="Active from"
+                isOptional
+                hasClear
+                value={isoToInput(form.activeFrom)}
+                onChange={(activeFrom) =>
+                  setForm({ ...form, activeFrom: activeFrom ?? null })
+                }
               />
-              <Text type="supporting">·</Text>
-              <DropdownMenu
-                button={{
-                  label:
-                    form.perCustomerLimit == null
-                      ? "use it any number of times"
-                      : `use it up to ${form.perCustomerLimit} times`,
-                  variant: "ghost",
-                  size: "sm",
-                }}
-                items={[
-                  {
-                    label: "use it any number of times",
-                    onClick: () => setForm({ ...form, perCustomerLimit: null }),
-                  },
-                  {
-                    label: "set a per-customer limit",
-                    onClick: () =>
-                      setForm({
-                        ...form,
-                        perCustomerLimit: form.perCustomerLimit ?? 1,
-                      }),
-                  },
-                ]}
+              <DateTimeInput
+                label="Active until"
+                isOptional
+                hasClear
+                value={isoToInput(form.activeUntil)}
+                onChange={(activeUntil) =>
+                  setForm({ ...form, activeUntil: activeUntil ?? null })
+                }
               />
-              {form.perCustomerLimit != null && (
-                <NumberInput
-                  label="Per-customer limit"
-                  isLabelHidden
-                  size="sm"
-                  value={form.perCustomerLimit}
-                  onChange={(perCustomerLimit) =>
-                    setForm({ ...form, perCustomerLimit })
-                  }
-                  isIntegerOnly
-                  min={1}
-                  width={90}
-                />
-              )}
-              <Text type="supporting">·</Text>
-              <DropdownMenu
-                button={{
-                  label:
-                    form.tenantUsageLimit == null
-                      ? "unlimited redemptions in total"
-                      : `at most ${form.tenantUsageLimit} redemptions in total`,
-                  variant: "ghost",
-                  size: "sm",
-                }}
-                items={[
-                  {
-                    label: "unlimited redemptions in total",
-                    onClick: () => setForm({ ...form, tenantUsageLimit: null }),
-                  },
-                  {
-                    label: "set a total limit",
-                    onClick: () =>
-                      setForm({
-                        ...form,
-                        tenantUsageLimit: form.tenantUsageLimit ?? 1,
-                      }),
-                  },
-                ]}
-              />
-              {form.tenantUsageLimit != null && (
-                <NumberInput
-                  label="Tenant limit"
-                  isLabelHidden
-                  size="sm"
-                  value={form.tenantUsageLimit}
-                  onChange={(tenantUsageLimit) =>
-                    setForm({ ...form, tenantUsageLimit })
-                  }
-                  isIntegerOnly
-                  min={1}
-                  width={90}
-                />
-              )}
-            </HStack>
+            </FormLayout>
             <Text type="label" weight="bold">
               Conditions
             </Text>

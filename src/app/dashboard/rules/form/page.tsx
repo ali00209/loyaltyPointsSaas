@@ -7,6 +7,7 @@ import { VStack, HStack } from "@astryxdesign/core/Layout";
 import { Text, Heading } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { NumberInput } from "@astryxdesign/core/NumberInput";
+import { DateTimeInput, type ISODateTimeString } from "@astryxdesign/core/DateTimeInput";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -160,6 +161,8 @@ interface WizardState {
   formulaGroups: FormulaGroupState[];
   pointsExpireAfterDays: number | null;
   active: boolean;
+  activeFrom: string | null;
+  activeUntil: string | null;
 }
 
 const MAX_STEPS = 3;
@@ -198,11 +201,23 @@ function defaultWizardState(): WizardState {
     formulaGroups: [defaultFormulaGroup("purchase", makeUid())],
     pointsExpireAfterDays: null,
     active: true,
+    activeFrom: null,
+    activeUntil: null,
   };
 }
 
 function makeUid(): string {
   return `fg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isoToInput(
+  iso: string | null | undefined,
+): ISODateTimeString | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` as ISODateTimeString;
 }
 
 function stateToInput(s: WizardState): EarningRuleInput {
@@ -249,6 +264,8 @@ function stateToInput(s: WizardState): EarningRuleInput {
     formulaGroups: groups,
     pointsExpireAfterDays: s.pointsExpireAfterDays,
     active: s.active,
+    activeFrom: s.activeFrom,
+    activeUntil: s.activeUntil,
   };
 }
 
@@ -260,6 +277,8 @@ function stateFromRule(r: {
   formulaGroups: FormulaGroup[];
   pointsExpireAfterDays: number | null;
   active: boolean;
+  activeFrom: string | null;
+  activeUntil: string | null;
 }): WizardState {
   const fieldless = getNumericFields(r.eventType, r.perItem).length === 0;
   const groups: FormulaGroupState[] =
@@ -287,6 +306,8 @@ function stateFromRule(r: {
     formulaGroups: groups,
     pointsExpireAfterDays: r.pointsExpireAfterDays,
     active: r.active,
+    activeFrom: r.activeFrom,
+    activeUntil: r.activeUntil,
   };
 }
 
@@ -795,6 +816,26 @@ function RuleWizard({ editingRule }: { editingRule: EarningRule | null }) {
               label="Active"
               value={state.active}
               changeAction={(v: boolean) => setState({ ...state, active: v })}
+            />
+          </FormLayout>
+          <FormLayout>
+            <DateTimeInput
+              label="Active from"
+              isOptional
+              hasClear
+              value={isoToInput(state.activeFrom)}
+              onChange={(v: string | undefined) =>
+                setState({ ...state, activeFrom: v ?? null })
+              }
+            />
+            <DateTimeInput
+              label="Active until"
+              isOptional
+              hasClear
+              value={isoToInput(state.activeUntil)}
+              onChange={(v: string | undefined) =>
+                setState({ ...state, activeUntil: v ?? null })
+              }
             />
           </FormLayout>
         </VStack>

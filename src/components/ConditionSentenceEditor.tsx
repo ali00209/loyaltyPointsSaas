@@ -107,6 +107,13 @@ export default function ConditionSentenceEditor({
     <VStack gap={3} hAlign="stretch">
       <HStack>
         <Card width={"fit-content"}>
+          <Button
+            label="Add condition"
+            variant="ghost"
+            size="sm"
+            icon={<Plus size="1em" />}
+            onClick={addRule}
+          />
           {conditions.rules.length > 1 && (
             <DropdownMenu
               button={{
@@ -127,13 +134,6 @@ export default function ConditionSentenceEditor({
               ]}
             />
           )}
-          <Button
-            label="Add condition"
-            variant="ghost"
-            size="sm"
-            icon={<Plus size="1em" />}
-            onClick={addRule}
-          />
         </Card>
       </HStack>
 
