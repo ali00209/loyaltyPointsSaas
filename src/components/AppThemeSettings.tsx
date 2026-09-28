@@ -10,6 +10,7 @@ import {
   SelectableCard,
   Divider,
   Grid,
+  VStack,
 } from "@astryxdesign/core";
 
 import {
@@ -18,6 +19,7 @@ import {
   ThemeName,
   useThemeStore,
 } from "@/lib/store/theme";
+import AppHeader from "./AppHeader";
 
 export default function AppThemeSetting() {
   const { themeName, mode, setThemeName, setMode } = useThemeStore();
@@ -32,13 +34,14 @@ export default function AppThemeSetting() {
   const themeOptions = Object.keys(themeMap);
 
   return (
-    <Card>
+    <VStack gap={6} hAlign="stretch">
+      <AppHeader
+        heading="Appearance Settings"
+        description="Customize how your loyalty platform looks and feels."
+        showButton={false}
+        showSearch={false}
+      />
       <Stack direction="vertical" gap={5}>
-        <Stack direction="vertical" gap={2}>
-          <Heading level={1}>Appearance Settings</Heading>
-          <Text>Customize how your loyalty platform looks and feels.</Text>
-        </Stack>
-
         <Heading level={2}>Theme Mode</Heading>
         <Grid columns={3} gap={5}>
           {modes.map(({ id, label, icon }) => {
@@ -94,6 +97,6 @@ export default function AppThemeSetting() {
           </Grid>
         </Stack>
       </Stack>
-    </Card>
+    </VStack>
   );
 }

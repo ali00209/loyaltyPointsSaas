@@ -17,6 +17,7 @@ import {
   deleteProduct,
   deleteReward,
   deleteRule,
+  fetchAppSettings,
   fetchAdminInvoices,
   fetchAdminOverview,
   fetchAdminPlans,
@@ -52,6 +53,7 @@ import {
   postPortalReview,
   recordPayment,
   regenerateApiKey,
+  saveAppSettings,
   register,
   createRedemptionRule,
   deleteRedemptionRule,
@@ -104,6 +106,7 @@ import type {
   UpdateTenantInput,
   User,
 } from "@/types";
+import type { AppSettings } from "@/lib/settings-defs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "./keys";
 
@@ -825,6 +828,23 @@ export function useRegenerateApiKey() {
     mutationFn: (name?: string) => regenerateApiKey(name),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.portal.apiKey });
+    },
+  });
+}
+
+export function useAppSettings() {
+  return useQuery({
+    queryKey: queryKeys.portal.app,
+    queryFn: fetchAppSettings,
+  });
+}
+
+export function useSaveAppSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<AppSettings>) => saveAppSettings(patch),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.portal.app });
     },
   });
 }

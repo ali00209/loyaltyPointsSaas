@@ -9,9 +9,14 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { useToast } from "@astryxdesign/core/Toast";
 import AppLoading from "@/components/AppLoading";
-import { useBillingPlans, useRequestSubscription, useSubscription } from "@/lib/query";
+import {
+  useBillingPlans,
+  useRequestSubscription,
+  useSubscription,
+} from "@/lib/query";
 import { formatPKR } from "@/lib/money";
 import type { BillingCycle } from "@/types";
+import AppHeader from "./AppHeader";
 
 function cycleWord(cycle: BillingCycle): string {
   return cycle === "weekly" ? "per week" : "per month";
@@ -39,21 +44,18 @@ export default function AppBillingSetting() {
     }
   };
 
-  const pending =
-    sub?.status === "pending"
-      ? sub
-      : undefined;
+  const pending = sub?.status === "pending" ? sub : undefined;
   const active = sub?.status === "active" ? sub : undefined;
 
   return (
     <VStack gap={5} hAlign="stretch">
-      <VStack gap={1}>
-        <Heading level={2}>Billing</Heading>
-        <Text type="supporting" color="secondary">
-          Choose the plan that fits your loyalty program. The admin activates it
-          and invoices you automatically each cycle.
-        </Text>
-      </VStack>
+      <AppHeader
+        heading="Billing"
+        description="Choose the plan that fits your loyalty program. The admin activates it
+      and invoices you automatically each cycle."
+        showButton={false}
+        showSearch={false}
+      />
 
       {active && (
         <Card padding={5}>

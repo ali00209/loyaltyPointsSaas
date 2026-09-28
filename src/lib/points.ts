@@ -20,6 +20,7 @@ import {
   type FormulaGroup,
   type StructuredFormula,
 } from "@/lib/rules";
+import { getAppSettings } from "@/lib/settings";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -367,7 +368,8 @@ function bestGroupPoints(
   return best;
 }
 
-// Evaluate every active rule for this event type. Highest-value rule wins (no stacking).
+// Evaluate every active rule for this event type. By default the highest-value
+// rule wins; when the tenant enables "Stack earning rules" every match is awarded.
 async function evaluateRulesForEvent(
   tx: Tx,
   input: ApplyEventInput,
@@ -385,7 +387,8 @@ async function evaluateRulesForEvent(
       ),
     );
 
-  let bestMatch: MatchedRuleRow | null = null;
+  const { allowRuleStacking } = await getAppSettings(input.tenantId, tx);
+  const matches: MatchedRuleRow[] = [];
 
   for (const { rule } of rows) {
     if (!isRuleActive(rule)) continue;
@@ -403,14 +406,19 @@ async function evaluateRulesForEvent(
     }
 
     if (points <= 0) continue;
-
-    // Highest value wins; first-in-list wins ties
-    if (!bestMatch || points > bestMatch.points) {
-      bestMatch = { rule, points };
-    }
+    matches.push({ rule, points });
   }
 
-  return bestMatch ? [bestMatch] : [];
+  if (allowRuleStacking) {
+    return matches.sort((a, b) => b.points - a.points);
+  }
+
+  // Highest value wins; first-in-list wins ties
+  const best = matches.reduce<MatchedRuleRow | null>(
+    (top, match) => (top === null || match.points > top.points ? match : top),
+    null,
+  );
+  return best ? [best] : [];
 }
 
 export async function applyEvent(

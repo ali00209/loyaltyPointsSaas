@@ -48,5 +48,6 @@ export const queryKeys = {
     overview: ["portal", "overview"] as const,
     purchases: ["portal", "purchases"] as const,
     apiKey: ["settings", "api-key"] as const,
+    app: ["settings", "app"] as const,
   },
 };

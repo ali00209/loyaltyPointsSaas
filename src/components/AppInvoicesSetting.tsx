@@ -16,14 +16,13 @@ import { InvoiceStatusBadge } from "@/components/InvoiceStatusBadge";
 import { useBillingInvoices } from "@/lib/query";
 import { formatPKR } from "@/lib/money";
 import type { Invoice } from "@/types";
+import AppHeader from "./AppHeader";
 
 function InvoiceDetail({ invoice }: { invoice: Invoice }) {
   return (
     <VStack gap={4} hAlign="stretch">
       <HStack gap={3} vAlign="center" wrap="wrap">
-        <Heading level={3}>
-          {invoice.invoiceNumber ?? "Draft invoice"}
-        </Heading>
+        <Heading level={3}>{invoice.invoiceNumber ?? "Draft invoice"}</Heading>
         <InvoiceStatusBadge status={invoice.effectiveStatus} />
       </HStack>
       {invoice.periodStart && invoice.periodEnd ? (
@@ -61,7 +60,9 @@ function InvoiceDetail({ invoice }: { invoice: Invoice }) {
               align: "end",
               renderCell: (item) => (
                 <Text type="body" hasTabularNumbers>
-                  {formatPKR((Number(item.unitPrice) * item.quantity).toFixed(2))}
+                  {formatPKR(
+                    (Number(item.unitPrice) * item.quantity).toFixed(2),
+                  )}
                 </Text>
               ),
             },
@@ -134,13 +135,13 @@ export default function AppInvoicesSetting() {
 
   return (
     <VStack gap={5} hAlign="stretch">
-      <VStack gap={1}>
-        <Heading level={2}>Invoices</Heading>
-        <Text type="supporting" color="secondary">
-          Your monthly invoices from the platform. Pay offline and the admin
-          records your payment.
-        </Text>
-      </VStack>
+      <AppHeader
+        heading="Invoices"
+        description="Your monthly invoices from the platform. Pay offline and the admin
+        records your payment."
+        showButton={false}
+        showSearch={false}
+      />
 
       {invoices.length === 0 ? (
         <EmptyState

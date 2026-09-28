@@ -18,6 +18,7 @@ import {
   useChangePassword,
 } from "@/lib/query";
 import type { User } from "@/types";
+import AppHeader from "./AppHeader";
 
 function ProfileForm({ user }: { user: User }) {
   const showToast = useToast();
@@ -89,6 +90,12 @@ function ProfileForm({ user }: { user: User }) {
 
   return (
     <VStack gap={4}>
+      <AppHeader
+        heading="Profile"
+        description="Update your Profile"
+        showButton={false}
+        showSearch={false}
+      />
       <Card>
         <VStack gap={1} style={{ marginBottom: 10 }}>
           <Heading level={3}>Basic information</Heading>

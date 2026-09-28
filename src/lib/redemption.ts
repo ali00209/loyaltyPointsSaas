@@ -13,7 +13,8 @@ import {
   type RuleGroupType,
 } from "@/lib/rules";
 import { normalizePakistaniMobile } from "@/lib/phone";
-import { consumePoints, restorePoints, withExpiry, PointsError } from "@/lib/points";
+import { applyEvent, consumePoints, restorePoints, withExpiry, PointsError } from "@/lib/points";
+import { getAppSettings } from "@/lib/settings";
 import type {
   CheckoutBenefit,
   CheckoutItem,
@@ -515,8 +516,41 @@ async function transitionCheckout(
         }
       }
     }
+    if (target === "finalized") {
+      await awardRedemptionPoints(tx, tenantId, row);
+    }
     return resultFromRow(updated);
   });
+}
+
+// A confirmed discount still means the customer spent money, so run their
+// purchase rules on the amount left after the discount. Runs inside the
+// finalize transaction: if this throws, the status change rolls back too.
+async function awardRedemptionPoints(
+  tx: Tx,
+  tenantId: string,
+  row: { customerId: string | null; orderAmount: string; discountAmount: string; checkoutId: string; orderId: string | null },
+) {
+  if (!row.customerId) return;
+  const { earnPointsOnRedemption } = await getAppSettings(tenantId, tx);
+  if (!earnPointsOnRedemption) return;
+
+  const paid = money(Number(row.orderAmount)) - money(Number(row.discountAmount));
+  if (!Number.isFinite(paid) || paid <= 0) return;
+
+  const reference = row.orderId ?? row.checkoutId;
+  await applyEvent(
+    {
+      tenantId,
+      customerId: row.customerId,
+      eventType: "purchase",
+      payload: { orderAmount: paid, orderNumber: reference, source: "redemption" },
+      // Re-finalizing the same checkout must not pay twice.
+      eventKey: `redemption:${tenantId}:${reference}`,
+      description: "Earned on a checkout where points were redeemed",
+    },
+    tx,
+  );
 }
 
 async function findCheckout(

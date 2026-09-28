@@ -493,3 +493,21 @@ export const billingCounters = pgTable("billing_counters", {
   key: text("key").primaryKey(),
   value: integer("value").notNull().default(0),
 });
+
+// Per-tenant program behaviour toggles. Keys are constrained to the registry
+// in src/lib/settings.ts; value is jsonb so adding a toggle needs no migration.
+export const tenantSettings = pgTable(
+  "tenant_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: jsonb("value").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("tenant_settings_tenant_key_idx").on(table.tenantId, table.key),
+  ],
+);

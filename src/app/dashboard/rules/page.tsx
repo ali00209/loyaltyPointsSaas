@@ -62,7 +62,7 @@ export default function RulesPage() {
   return (
     <VStack gap={6} hAlign="stretch">
       <AppHeader
-        heading="Rules"
+        heading="Earning Rules"
         description="Create and manage earning rules for your loyalty program"
         showButton={true}
         onClick={() => router.push("/dashboard/rules/form")}

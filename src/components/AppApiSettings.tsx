@@ -62,6 +62,12 @@ export default function AppApiSetting() {
 
   return (
     <VStack gap={6} hAlign="stretch">
+      <AppHeader
+        heading="Api"
+        description="Api settings"
+        showButton={false}
+        showSearch={false}
+      />
       <Card padding={6}>
         <VStack gap={4} hAlign="stretch">
           <Heading level={2}>Portal</Heading>

@@ -13,6 +13,7 @@ import {
   verifyApiKey,
 } from "@/lib/auth";
 import { eq } from "drizzle-orm";
+import { getAppSettings } from "@/lib/settings";
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -59,6 +60,15 @@ export async function requirePortalTenant(): Promise<
       error: NextResponse.json({ error: "This loyalty program is suspended" }, { status: 403 }),
     };
   }
+  const { publicStorefront } = await getAppSettings(tenant.id);
+  if (!publicStorefront) {
+    return {
+      error: NextResponse.json(
+        { error: "The customer portal is closed for this program" },
+        { status: 403 },
+      ),
+    };
+  }
   return { tenantId: tenant.id };
 }
 
@@ -88,6 +98,16 @@ export async function requireCustomerPortalTenant(
     return {
       error: NextResponse.json(
         { error: "This loyalty program is suspended" },
+        { status: 403 },
+      ),
+    };
+  }
+
+  const { publicStorefront } = await getAppSettings(tenant.id);
+  if (!publicStorefront) {
+    return {
+      error: NextResponse.json(
+        { error: "The customer portal is closed for this program" },
         { status: 403 },
       ),
     };

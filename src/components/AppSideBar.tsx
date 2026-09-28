@@ -9,10 +9,20 @@ import {
   LogOut,
   Star,
   Building2,
-  Settings,
   QrCode,
   CreditCard,
   Receipt,
+  Coins,
+  Percent,
+  Settings,
+  User,
+  ReceiptText,
+  SwatchBook,
+  Cable,
+  BookOpen,
+  SlidersHorizontal,
+  TicketSlash,
+  AppWindow,
 } from "lucide-react";
 import type { IconType } from "@astryxdesign/core/Icon";
 import {
@@ -25,92 +35,118 @@ import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { HStack, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
-import { type SVGProps } from "react";
+import { type ReactNode, type SVGProps } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import AppLoading from "./AppLoading";
 import { useCurrentUser, useLogout } from "@/lib/query";
 
-function fillIcon(IconComponent: IconType): IconType {
-  return function FilledIcon(props: SVGProps<SVGSVGElement>) {
-    return <IconComponent {...props} fill="currentColor" />;
-  };
+interface NavItem {
+  label: string;
+  href?: string;
+  icon?: IconType;
+  children?: NavItem[];
 }
 
-const ownerNavItems = [
+const ownerNavItems: NavItem[] = [
   {
     label: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
-    selectedIcon: fillIcon(LayoutDashboard),
+  },
+
+  {
+    label: "Rules",
+    icon: ShieldCheck,
+    children: [
+      {
+        label: "Earning ",
+        href: "/dashboard/rules",
+        icon: Coins,
+      },
+      {
+        label: "Redemption",
+        href: "/dashboard/redemption-rules",
+        icon: Percent,
+      },
+    ],
   },
   {
     label: "Products",
     href: "/dashboard/products",
     icon: Package,
-    selectedIcon: fillIcon(Package),
-  },
-  {
-    label: "Earning Rules",
-    href: "/dashboard/rules",
-    icon: ShieldCheck,
-    selectedIcon: fillIcon(ShieldCheck),
-  },
-  {
-    label: "Redemption Rules",
-    href: "/dashboard/redemption-rules",
-    icon: ShieldCheck,
-    selectedIcon: fillIcon(ShieldCheck),
   },
   {
     label: "Customers",
     href: "/dashboard/customers",
     icon: Users,
-    selectedIcon: fillIcon(Users),
   },
   {
-    label: "Transactions",
-    href: "/dashboard/transactions",
-    icon: ArrowLeftRight,
-    selectedIcon: fillIcon(ArrowLeftRight),
+    label: "Ledger",
+    icon: BookOpen,
+    children: [
+      {
+        label: "Transactions",
+        href: "/dashboard/transactions",
+        icon: ArrowLeftRight,
+      },
+      {
+        label: "Redemptions",
+        href: "/dashboard/transactions/redemptions",
+        icon: TicketSlash,
+      },
+    ],
   },
   {
     label: "Store QR",
     href: "/dashboard/qr",
     icon: QrCode,
-    selectedIcon: fillIcon(QrCode),
   },
   {
     label: "Settings",
-    href: "/dashboard/settings",
     icon: Settings,
-    selectedIcon: fillIcon(Settings),
+    children: [
+      { label: "Profile", href: "/dashboard/settings/profile", icon: User },
+      {
+        label: "Billing",
+        href: "/dashboard/settings/billing",
+        icon: CreditCard,
+      },
+      {
+        label: "Invoices",
+        href: "/dashboard/settings/invoices",
+        icon: ReceiptText,
+      },
+      { label: "Theme", href: "/dashboard/settings/theme", icon: SwatchBook },
+      { label: "Api", href: "/dashboard/settings/api", icon: Cable },
+      {
+        label: "App",
+        href: "/dashboard/settings/app",
+        icon: SlidersHorizontal,
+      },
+    ],
   },
 ];
 
-const adminNavItems = [
+const adminNavItems: NavItem[] = [
   {
     label: "Overview",
     href: "/admin",
     icon: LayoutDashboard,
-    selectedIcon: fillIcon(LayoutDashboard),
   },
   {
     label: "Tenants",
     href: "/admin/tenants",
     icon: Building2,
-    selectedIcon: fillIcon(Building2),
   },
   {
     label: "Plans",
     href: "/admin/plans",
     icon: CreditCard,
-    selectedIcon: fillIcon(CreditCard),
   },
   {
     label: "Invoices",
     href: "/admin/invoices",
     icon: Receipt,
-    selectedIcon: fillIcon(Receipt),
   },
 ];
 
@@ -133,6 +169,38 @@ export default function AppSideBar() {
 
   const isAdmin = user.role === "admin";
   const navItems = isAdmin ? adminNavItems : ownerNavItems;
+
+  const isWithin = (href?: string) =>
+    href != null &&
+    (pathname === href ||
+      (href !== "/dashboard" &&
+        href !== "/admin" &&
+        pathname.startsWith(href + "/")));
+
+  const branchIsActive = (item: NavItem) =>
+    isWithin(item.href) ||
+    (item.children?.some((child) => isWithin(child.href)) ?? false);
+
+  const renderItem = (item: NavItem): ReactNode => {
+    return (
+      <SideNavItem
+        key={item.href ?? item.label}
+        label={item.label}
+        href={item.href}
+        icon={item.icon}
+        collapsible={
+          item.children
+            ? branchIsActive(item)
+              ? { isCollapsed: false }
+              : { defaultIsCollapsed: true }
+            : undefined
+        }
+        isSelected={isWithin(item.href)}
+      >
+        {item.children?.map(renderItem)}
+      </SideNavItem>
+    );
+  };
 
   return (
     <SideNav
@@ -170,21 +238,7 @@ export default function AppSideBar() {
         </VStack>
       }
     >
-      {navItems.map((item) => (
-        <SideNavItem
-          key={item.href}
-          label={item.label}
-          href={item.href}
-          icon={item.icon}
-          selectedIcon={item.selectedIcon}
-          isSelected={
-            pathname === item.href ||
-            (item.href !== "/dashboard" &&
-              item.href !== "/admin" &&
-              pathname.startsWith(item.href + "/"))
-          }
-        />
-      ))}
+      {navItems.map(renderItem)}
     </SideNav>
   );
 }

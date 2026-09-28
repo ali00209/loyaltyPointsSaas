@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { tenants } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { createPortalTenantToken } from "@/lib/auth";
+import { getAppSettings } from "@/lib/settings";
 
 export async function GET(
   _req: Request,
@@ -22,7 +23,14 @@ export async function GET(
     .where(eq(tenants.slug, String(slug).toLowerCase()))
     .limit(1);
 
+  // A closed storefront is indistinguishable from a program that never
+  // existed, so name and branding are not disclosed here either.
   if (!tenant) {
+    return NextResponse.json({ error: "Program not found" }, { status: 404 });
+  }
+
+  const { publicStorefront } = await getAppSettings(tenant.id);
+  if (!publicStorefront) {
     return NextResponse.json({ error: "Program not found" }, { status: 404 });
   }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { SETTING_KEYS, type SettingKey } from "@/lib/settings-defs";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -464,6 +465,19 @@ export const UpdateTenantSchema = z.object({
 export const CreateApiKeySchema = z.object({
   name: z.string().max(200).optional(),
 });
+
+// Derived from the registry so a new toggle needs no edit here. `.strict()`
+// rejects a typo'd key instead of storing a row nothing reads.
+export const UpdateAppSettingsSchema = z
+  .object(
+    Object.fromEntries(
+      SETTING_KEYS.map((key) => [
+        key,
+        z.boolean().optional(),
+      ]),
+    ) as Record<SettingKey, z.ZodOptional<z.ZodBoolean>>,
+  )
+  .strict();
 
 // ─── Billing ─────────────────────────────────────────────────────────────────
 
