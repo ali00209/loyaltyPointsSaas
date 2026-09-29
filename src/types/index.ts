@@ -9,4 +9,5 @@ export * from "./reward";
 export * from "./redemption";
 export * from "./transaction";
 export * from "./dashboard";
+export * from "./analytics";
 export * from "./tenant";

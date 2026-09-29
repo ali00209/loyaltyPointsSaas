@@ -26,6 +26,10 @@ export const queryKeys = {
   dashboard: {
     all: ["dashboard"] as const,
   },
+  analytics: {
+    detail: (window: string, segment: string) =>
+      ["analytics", window, segment] as const,
+  },
   admin: {
     overview: ["admin", "overview"] as const,
     tenants: ["admin", "tenants"] as const,

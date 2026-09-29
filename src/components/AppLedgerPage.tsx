@@ -32,6 +32,14 @@ import {
   useRefundOwnerCheckout,
 } from "@/lib/query";
 import { formatPKR } from "@/lib/money";
+import { ApiError } from "@/lib/api";
+import {
+  CreateEventSchema,
+  CreateTransactionSchema,
+  OwnerCheckoutSchema,
+  OwnerRefundSchema,
+} from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 import {
   EVENT_CATALOG,
   eventLabel,
@@ -166,12 +174,180 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
   const [redemptionForm, setRedemptionForm] = useState<RedemptionForm>(
     defaultRedemptionForm,
   );
+  const [refundServer, setRefundServer] = useState<ApiError["details"]>();
+  const refundStatus = useFieldStatus(
+    OwnerRefundSchema,
+    { checkoutId: refundTarget?.checkoutId, reason: refundReason },
+    refundServer,
+  );
   const [redemptionPreview, setRedemptionPreview] =
     useState<CheckoutPreview | null>(null);
   const showToast = useToast();
 
+  const [checkoutServer, setCheckoutServer] = useState<ApiError["details"]>();
+  const checkoutStatus = useFieldStatus(
+    OwnerCheckoutSchema,
+    {
+      checkoutId: redemptionForm.checkoutId,
+      customerEmail: customers.find((c) => c.id === redemptionForm.customerId)
+        ?.email,
+      customerPhone: customers.find((c) => c.id === redemptionForm.customerId)
+        ?.phone,
+      orderAmount: redemptionForm.orderAmount,
+      // Incomplete rows never reach the API either; validating them would flag
+      // a fresh optional row nobody has touched yet.
+      items: redemptionForm.items.filter(
+        (item) =>
+          item.productId && item.quantity != null && item.unitPrice != null,
+      ),
+    },
+    // OwnerCheckoutSchema needs an email or phone, but both come from the
+    // selected customer — the field the message should land on.
+    [
+      ...(checkoutServer ?? []),
+      ...(redemptionForm.customerId === ""
+        ? [{ field: "customerId", message: "Customer is required" }]
+        : []),
+      ...(redemptionForm.orderAmount == null
+        ? [{ field: "orderAmount", message: "Order amount is required" }]
+        : []),
+      ...(() => {
+        const customer = customers.find(
+          (c) => c.id === redemptionForm.customerId,
+        );
+        if (!customer) return [];
+        return !customer.email && !customer.phone
+          ? [
+              {
+                field: "customerId",
+                message: "Customer has no email or phone on file",
+              },
+            ]
+          : [];
+      })(),
+    ],
+  );
+
+  const [adjustServer, setAdjustServer] = useState<ApiError["details"]>();
+  const adjustStatus = useFieldStatus(
+    CreateTransactionSchema,
+    {
+      customerId: ledger.customerId,
+      transactionType: "adjust",
+      points: ledger.points,
+      description: ledger.description,
+    },
+    // The server rejects a zero adjustment, but CreateTransactionSchema allows
+    // 0, and an empty customerId only reports the uuid's generic message.
+    [
+      ...(adjustServer ?? []),
+      ...(ledger.customerId === ""
+        ? [{ field: "customerId", message: "Customer is required" }]
+        : []),
+      ...(ledger.points == null || ledger.points === 0
+        ? [
+            {
+              field: "points",
+              message: "Adjustment needs a non-zero point amount",
+            },
+          ]
+        : []),
+    ],
+  );
+
+  const buildPayload = (): Record<string, unknown> => {
+    const f = eventForm;
+    switch (f.eventType) {
+      case "purchase":
+        return {
+          orderAmount: f.orderAmount,
+          ...(f.orderNumber ? { orderNumber: f.orderNumber } : {}),
+          items: f.items
+            .filter(
+              (it) =>
+                it.productId && it.quantity != null && it.unitPrice != null,
+            )
+            .map((it) => ({
+              productId: it.productId,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+            })),
+        };
+      case "review":
+        return {
+          purchaseId: f.purchaseId,
+          productId: f.productId,
+          rating: f.rating,
+        };
+      case "social_share":
+        return f.platform ? { platform: f.platform } : {};
+      default:
+        return {};
+    }
+  };
+
+  const [eventServer, setEventServer] = useState<ApiError["details"]>();
+  // CreateEventSchema covers the envelope; the per-type payload rules come from
+  // validateEventPayload on the server, which returns a flat message rather than
+  // details, so they are mirrored here against the input that owns each one.
+  const eventStatus = useFieldStatus(
+    CreateEventSchema,
+    {
+      eventType: eventForm.eventType,
+      customerId: eventForm.customerId,
+      payload: buildPayload(),
+    },
+    [
+      ...(eventServer ?? []),
+      ...(eventForm.customerId === ""
+        ? [{ field: "customerId", message: "Customer is required" }]
+        : []),
+      ...(eventForm.eventType === "purchase" &&
+      (eventForm.orderAmount == null ||
+        Number.isNaN(Number(eventForm.orderAmount)) ||
+        Number(eventForm.orderAmount) < 0)
+        ? [
+            {
+              field: "payload.orderAmount",
+              message: "Purchase requires a valid orderAmount",
+            },
+          ]
+        : []),
+      ...(eventForm.eventType === "review" && !eventForm.purchaseId
+        ? [
+            {
+              field: "payload.purchaseId",
+              message: "Review requires purchaseId",
+            },
+          ]
+        : []),
+      ...(eventForm.eventType === "review" && !eventForm.productId
+        ? [
+            {
+              field: "payload.productId",
+              message: "Review requires productId",
+            },
+          ]
+        : []),
+      ...(eventForm.eventType === "review" &&
+      (eventForm.rating == null ||
+        Number.isNaN(Number(eventForm.rating)) ||
+        Number(eventForm.rating) < 1 ||
+        Number(eventForm.rating) > 5)
+        ? [
+            {
+              field: "payload.rating",
+              message: "Rating must be 1–5",
+            },
+          ]
+        : []),
+    ],
+  );
+
   const openLedger = (type: string) => {
     setLedger({ ...defaultLedgerForm, transactionType: type });
+    setAdjustServer(undefined);
+    adjustStatus.reset();
     setShowLedger(true);
   };
 
@@ -227,11 +403,20 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
   };
 
   const previewRedemption = async () => {
+    checkoutStatus.revealAll();
+    if (!redemptionForm.customerId || redemptionForm.orderAmount == null) {
+      return;
+    }
+    setCheckoutServer(undefined);
     try {
       const result =
         await previewRedemptionMutation.mutateAsync(redemptionPayload());
       setRedemptionPreview(result);
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setCheckoutServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body:
@@ -241,6 +426,11 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
   };
 
   const confirmRedemption = async () => {
+    checkoutStatus.revealAll();
+    if (!redemptionForm.customerId || redemptionForm.orderAmount == null) {
+      return;
+    }
+    setCheckoutServer(undefined);
     try {
       const result =
         await confirmRedemptionMutation.mutateAsync(redemptionPayload());
@@ -258,6 +448,10 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
       setShowRedemption(false);
       setRedemptionPreview(null);
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setCheckoutServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body:
@@ -267,11 +461,18 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
   };
 
   const refundRedemption = async () => {
-    if (!refundTarget || !refundReason.trim()) return;
+    if (!refundTarget) return;
+    refundStatus.revealAll();
+    const parsed = OwnerRefundSchema.safeParse({
+      checkoutId: refundTarget.checkoutId,
+      reason: refundReason,
+    });
+    if (!parsed.success) return;
+    setRefundServer(undefined);
     try {
       await refundRedemptionMutation.mutateAsync({
         checkoutId: refundTarget.checkoutId,
-        reason: refundReason.trim(),
+        reason: parsed.data.reason,
       });
       showToast({
         type: "info",
@@ -279,7 +480,12 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
       });
       setRefundTarget(null);
       setRefundReason("");
+      refundStatus.reset();
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setRefundServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body:
@@ -298,21 +504,30 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
   };
 
   const handleLedgerSave = async () => {
+    adjustStatus.revealAll();
+    const parsed = CreateTransactionSchema.safeParse({
+      customerId: ledger.customerId,
+      transactionType: "adjust",
+      points: ledger.points,
+      // Empty means "omit the field"; null would fail the schema.
+      description: ledger.description || undefined,
+    });
+    if (!parsed.success) return;
+    setAdjustServer(undefined);
     setSaving(true);
     try {
       const payload: TransactionInput = {
-        customerId: ledger.customerId,
+        ...parsed.data,
         transactionType: "adjust",
-        points:
-          ledger.transactionType === "adjust"
-            ? (ledger.points ?? 0)
-            : undefined,
-        description: ledger.description || null,
       };
       await createTransactionMutation.mutateAsync(payload);
       showToast({ type: "info", body: "Transaction recorded" });
       setShowLedger(false);
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setAdjustServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body:
@@ -320,37 +535,6 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
       });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const buildPayload = (): Record<string, unknown> => {
-    const f = eventForm;
-    switch (f.eventType) {
-      case "purchase":
-        return {
-          orderAmount: f.orderAmount,
-          ...(f.orderNumber ? { orderNumber: f.orderNumber } : {}),
-          items: f.items
-            .filter(
-              (it) =>
-                it.productId && it.quantity != null && it.unitPrice != null,
-            )
-            .map((it) => ({
-              productId: it.productId,
-              quantity: it.quantity,
-              unitPrice: it.unitPrice,
-            })),
-        };
-      case "review":
-        return {
-          purchaseId: f.purchaseId,
-          productId: f.productId,
-          rating: f.rating,
-        };
-      case "social_share":
-        return f.platform ? { platform: f.platform } : {};
-      default:
-        return {};
     }
   };
 
@@ -422,9 +606,6 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
       source.toLowerCase().includes(search.toLowerCase());
     return matchType && matchSearch;
   });
-
-  const canSaveLedger =
-    Boolean(ledger.customerId) && ledger.points != null && ledger.points !== 0;
 
   if (isLoading) {
     return <AppLoading label="Loading transactions..." />;
@@ -750,7 +931,9 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             onChange={(value) => {
               setRedemptionForm({ ...redemptionForm, customerId: value });
               setRedemptionPreview(null);
+              setCheckoutServer(undefined);
             }}
+            status={checkoutStatus.statusFor("customerId")}
           />
           <NumberInput
             label="Order amount (PKR)"
@@ -764,6 +947,8 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
               setRedemptionForm({ ...redemptionForm, orderAmount: value });
               setRedemptionPreview(null);
             }}
+            onBlur={() => checkoutStatus.onBlur("orderAmount")}
+            status={checkoutStatus.statusFor("orderAmount")}
           />
           <Text type="label" weight="medium">
             Line items (optional)
@@ -899,9 +1084,6 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
               label="Preview redemption"
               variant="primary"
               isLoading={previewRedemptionMutation.isPending}
-              isDisabled={
-                !redemptionForm.customerId || redemptionForm.orderAmount == null
-              }
               onClick={previewRedemption}
               width="100%"
             />
@@ -923,6 +1105,8 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
           if (!open) {
             setRefundTarget(null);
             setRefundReason("");
+            setRefundServer(undefined);
+            refundStatus.reset();
           }
         }}
         purpose="form"
@@ -943,6 +1127,8 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             isRequired
             value={refundReason}
             onChange={setRefundReason}
+            onBlur={() => refundStatus.onBlur("reason")}
+            status={refundStatus.statusFor("reason")}
             rows={4}
           />
         </VStack>
@@ -957,7 +1143,6 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             label="Confirm refund"
             variant="destructive"
             isLoading={refundRedemptionMutation.isPending}
-            isDisabled={!refundReason.trim()}
             onClick={refundRedemption}
             width="100%"
           />
@@ -983,6 +1168,7 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             }))}
             value={ledger.customerId}
             onChange={(v) => setLedger({ ...ledger, customerId: v })}
+            status={adjustStatus.statusFor("customerId")}
           />
           <NumberInput
             label="Points Adjustment (signed)"
@@ -990,7 +1176,12 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             isRequired
             hasClear
             value={ledger.points}
-            onChange={(v) => setLedger({ ...ledger, points: v })}
+            onChange={(v) => {
+              setLedger({ ...ledger, points: v });
+              adjustStatus.onBlur("points");
+            }}
+            onBlur={() => adjustStatus.onBlur("points")}
+            status={adjustStatus.statusFor("points")}
           />
           <TextInput
             label="Description"
@@ -998,6 +1189,8 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             isOptional
             value={ledger.description}
             onChange={(v) => setLedger({ ...ledger, description: v })}
+            onBlur={() => adjustStatus.onBlur("description")}
+            status={adjustStatus.statusFor("description")}
           />
         </VStack>
         <HStack gap={3} style={{ marginTop: 20 }}>
@@ -1011,7 +1204,6 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
             label="Submit"
             variant="primary"
             isLoading={saving}
-            isDisabled={!canSaveLedger}
             onClick={handleLedgerSave}
             width="100%"
           />

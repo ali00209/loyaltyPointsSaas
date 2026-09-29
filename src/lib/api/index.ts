@@ -11,6 +11,7 @@ export * from "./rewards";
 export * from "./redemption";
 export * from "./transactions";
 export * from "./dashboard";
+export * from "./analytics";
 export * from "./admin";
 export * from "./seed";
 export * from "./qr";

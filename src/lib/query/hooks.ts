@@ -26,6 +26,7 @@ import {
   fetchAdminTenantCustomers,
   fetchAdminTenantTransactions,
   fetchAdminTenants,
+  fetchAnalytics,
   fetchApiKey,
   fetchAssignedRules,
   fetchBillingInvoices,
@@ -107,6 +108,7 @@ import type {
   User,
 } from "@/types";
 import type { AppSettings } from "@/lib/settings-defs";
+import type { AnalyticsSegment, AnalyticsWindow } from "@/types/analytics";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "./keys";
 
@@ -410,6 +412,16 @@ export function useDashboard() {
   return useQuery({
     queryKey: queryKeys.dashboard.all,
     queryFn: fetchDashboard,
+  });
+}
+
+export function useAnalytics(
+  window: AnalyticsWindow,
+  segment: AnalyticsSegment,
+) {
+  return useQuery({
+    queryKey: queryKeys.analytics.detail(window, segment),
+    queryFn: () => fetchAnalytics(window, segment),
   });
 }
 
