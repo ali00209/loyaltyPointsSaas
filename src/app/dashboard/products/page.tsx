@@ -27,6 +27,9 @@ import {
 } from "@/lib/query";
 import type { Product, ProductInput } from "@/types";
 import { formatPKR } from "@/lib/money";
+import { ApiError } from "@/lib/api";
+import { CreateProductSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 const CATEGORIES = [
   "General",
@@ -69,9 +72,18 @@ export default function ProductsPage() {
   const showToast = useToast();
   const alert = useImperativeAlertDialog();
 
+  const [productServer, setProductServer] = useState<ApiError["details"]>();
+  const productStatus = useFieldStatus(
+    CreateProductSchema,
+    { ...form, price: form.price ?? undefined },
+    productServer,
+  );
+
   const openCreate = () => {
     setEditing(null);
     setForm({ name: "", sku: "", price: null, category: "General" });
+    setProductServer(undefined);
+    productStatus.reset();
     setShowForm(true);
   };
 
@@ -83,13 +95,27 @@ export default function ProductsPage() {
       price: parseFloat(p.price),
       category: p.category,
     });
+    setProductServer(undefined);
+    productStatus.reset();
     setShowForm(true);
   };
 
   const handleSave = async () => {
+    productStatus.revealAll();
+    const parsed = CreateProductSchema.safeParse({
+      ...form,
+      price: form.price ?? undefined,
+    });
+    if (!parsed.success) return;
+    setProductServer(undefined);
     setSaving(true);
     try {
-      const payload: ProductInput = { ...form, price: String(form.price) };
+      // The API takes price as the Postgres numeric string.
+      const payload: ProductInput = {
+        ...parsed.data,
+        price: String(parsed.data.price),
+        category: parsed.data.category ?? "General",
+      };
       if (editing) {
         await updateProductMutation.mutateAsync({
           id: editing.id,
@@ -101,8 +127,15 @@ export default function ProductsPage() {
         showToast({ type: "info", body: "Product created" });
       }
       setShowForm(false);
-    } catch {
-      showToast({ type: "error", body: "Failed to save product" });
+    } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setProductServer(err.details);
+        return;
+      }
+      showToast({
+        type: "error",
+        body: err instanceof Error ? err.message : "Failed to save product",
+      });
     } finally {
       setSaving(false);
     }
@@ -279,6 +312,8 @@ export default function ProductsPage() {
             placeholder="Product name"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
+            onBlur={() => productStatus.onBlur("name")}
+            status={productStatus.statusFor("name")}
             isRequired
           />
           <TextInput
@@ -286,15 +321,21 @@ export default function ProductsPage() {
             placeholder="PRD-001"
             value={form.sku}
             onChange={(v) => setForm({ ...form, sku: v })}
+            onBlur={() => productStatus.onBlur("sku")}
+            status={productStatus.statusFor("sku")}
             isRequired
           />
           <NumberInput
             label="Price (PKR)"
             placeholder="0.00"
             value={form.price}
-            onChange={(v) => setForm({ ...form, price: v })}
+            onChange={(v) => {
+              setForm({ ...form, price: v });
+              productStatus.onBlur("price");
+            }}
             min={0}
             step={0.01}
+            status={productStatus.statusFor("price")}
             isRequired
           />
           <Selector
@@ -315,7 +356,6 @@ export default function ProductsPage() {
             label={editing ? "Update" : "Create"}
             variant="primary"
             isLoading={saving}
-            isDisabled={!form.name || !form.sku || form.price === null}
             onClick={handleSave}
             width="100%"
           />

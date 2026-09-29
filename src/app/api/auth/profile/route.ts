@@ -3,17 +3,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
-
-const UpdateProfileSchema = z.object({
-  name: z.string().min(1, "Name is required").max(200),
-  email: z.string().min(1, "Email is required").email("Invalid email address"),
-});
-
-const ChangePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(1, "New password is required").min(6, "Password must be at least 6 characters"),
-});
+import { ChangePasswordSchema, UpdateProfileSchema } from "@/lib/validations";
 
 export async function PUT(req: NextRequest) {
   const user = await getCurrentUser();

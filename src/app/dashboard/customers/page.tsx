@@ -23,6 +23,9 @@ import {
   useDeleteCustomer,
 } from "@/lib/query";
 import type { Customer } from "@/types";
+import { ApiError } from "@/lib/api";
+import { CreateCustomerSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 export default function CustomersPage() {
   const { data: customers = [], isLoading } = useCustomers();
@@ -37,34 +40,56 @@ export default function CustomersPage() {
   const showToast = useToast();
   const alert = useImperativeAlertDialog();
 
+  const [customerServer, setCustomerServer] = useState<ApiError["details"]>();
+  const customerStatus = useFieldStatus(
+    CreateCustomerSchema,
+    form,
+    customerServer,
+  );
+
   const openCreate = () => {
     setEditing(null);
     setForm({ name: "", email: "", phone: "" });
+    setCustomerServer(undefined);
+    customerStatus.reset();
     setShowForm(true);
   };
 
   const openEdit = (c: Customer) => {
     setEditing(c);
     setForm({ name: c.name, email: c.email || "", phone: c.phone || "" });
+    setCustomerServer(undefined);
+    customerStatus.reset();
     setShowForm(true);
   };
 
   const handleSave = async () => {
+    customerStatus.revealAll();
+    const parsed = CreateCustomerSchema.safeParse(form);
+    if (!parsed.success) return;
+    setCustomerServer(undefined);
     setSaving(true);
     try {
       if (editing) {
         await updateCustomerMutation.mutateAsync({
           id: editing.id,
-          input: form,
+          input: parsed.data,
         });
         showToast({ type: "info", body: "Customer updated" });
       } else {
-        await createCustomerMutation.mutateAsync(form);
+        await createCustomerMutation.mutateAsync(parsed.data);
         showToast({ type: "info", body: "Customer created" });
       }
       setShowForm(false);
-    } catch {
-      showToast({ type: "error", body: "Failed to save customer" });
+    } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setCustomerServer(err.details);
+        return;
+      }
+      showToast({
+        type: "error",
+        body: err instanceof Error ? err.message : "Failed to save customer",
+      });
     } finally {
       setSaving(false);
     }
@@ -228,6 +253,8 @@ export default function CustomersPage() {
             placeholder="Customer name"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
+            onBlur={() => customerStatus.onBlur("name")}
+            status={customerStatus.statusFor("name")}
             isRequired
           />
           <TextInput
@@ -236,6 +263,8 @@ export default function CustomersPage() {
             placeholder="customer@email.com"
             value={form.email}
             onChange={(v) => setForm({ ...form, email: v })}
+            onBlur={() => customerStatus.onBlur("email")}
+            status={customerStatus.statusFor("email")}
             isOptional
           />
           <TextInput
@@ -243,6 +272,8 @@ export default function CustomersPage() {
             placeholder="+1-555-0100"
             value={form.phone}
             onChange={(v) => setForm({ ...form, phone: v })}
+            onBlur={() => customerStatus.onBlur("phone")}
+            status={customerStatus.statusFor("phone")}
             isOptional
           />
         </VStack>
@@ -257,7 +288,6 @@ export default function CustomersPage() {
             label={editing ? "Update" : "Create"}
             variant="primary"
             isLoading={saving}
-            isDisabled={!form.name}
             onClick={handleSave}
             width="100%"
           />

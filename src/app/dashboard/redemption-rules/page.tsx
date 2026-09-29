@@ -22,7 +22,10 @@ import {
   VStack,
   proportional,
 } from "@astryxdesign/core";
-import { DateTimeInput, type ISODateTimeString } from "@astryxdesign/core/DateTimeInput";
+import {
+  DateTimeInput,
+  type ISODateTimeString,
+} from "@astryxdesign/core/DateTimeInput";
 import { Percent, ShieldCheck } from "lucide-react";
 import { useMemo } from "react";
 import type { RuleGroupType } from "react-querybuilder";
@@ -42,6 +45,9 @@ import {
 } from "@/lib/query";
 import type { RedemptionRule, RedemptionRuleInput } from "@/types";
 import { formatPKR } from "@/lib/money";
+import { ApiError } from "@/lib/api";
+import { CreateRedemptionRuleSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 const fields: AuthoringField[] = [
   { name: "orderAmount", label: "Order amount (PKR)", type: "number" },
@@ -99,9 +105,18 @@ export default function RedemptionRulesPage() {
   const [open, setOpen] = useState(false);
   const toast = useToast();
 
+  const [ruleServer, setRuleServer] = useState<ApiError["details"]>();
+  const ruleStatus = useFieldStatus(
+    CreateRedemptionRuleSchema,
+    form,
+    ruleServer,
+  );
+
   const openCreate = () => {
     setEditing(null);
     setForm({ ...defaultForm, conditions: emptyConditions });
+    setRuleServer(undefined);
+    ruleStatus.reset();
     setOpen(true);
   };
   const openEdit = (rule: RedemptionRule) => {
@@ -121,18 +136,34 @@ export default function RedemptionRulesPage() {
       perCustomerLimit: rule.perCustomerLimit,
       tenantUsageLimit: rule.tenantUsageLimit,
     });
+    setRuleServer(undefined);
+    ruleStatus.reset();
     setOpen(true);
   };
   const save = async () => {
+    ruleStatus.revealAll();
+    const parsed = CreateRedemptionRuleSchema.safeParse(form);
+    if (!parsed.success) return;
+    setRuleServer(undefined);
+    // RedemptionRuleConditionsSchema is an untyped z.ZodType, so conditions
+    // round-trips as unknown; the form already holds the right value.
+    const input: RedemptionRuleInput = { ...parsed.data, conditions: form.conditions };
     try {
-      if (editing) await update.mutateAsync({ id: editing.id, input: form });
-      else await create.mutateAsync(form);
+      if (editing) {
+        await update.mutateAsync({ id: editing.id, input });
+      } else {
+        await create.mutateAsync(input);
+      }
       setOpen(false);
       toast({
         type: "info",
         body: editing ? "Redemption rule updated" : "Redemption rule created",
       });
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setRuleServer(err.details);
+        return;
+      }
       toast({ type: "error", body: "Unable to save redemption rule" });
     }
   };
@@ -177,11 +208,13 @@ export default function RedemptionRulesPage() {
                   {rule.name}
                 </Text>
                 <Text type="supporting" color="secondary">
-                  {rule.discountType === "percent"
-                    ? `${rule.discountValue}% off`
-                    : rule.redemptionMode === "per_point"
-                      ? `${formatPKR(rule.discountValue)} per point`
-                      : `${formatPKR(rule.discountValue)} off`}
+                  {rule.discountType == null
+                    ? "No discount configured"
+                    : rule.discountType === "percent"
+                      ? `${rule.discountValue}% off`
+                      : rule.redemptionMode === "per_point"
+                        ? `${formatPKR(rule.discountValue)} per point`
+                        : `${formatPKR(rule.discountValue)} off`}
                 </Text>
               </VStack>
             ),
@@ -197,7 +230,14 @@ export default function RedemptionRulesPage() {
             key: "cost",
             header: "Points",
             renderCell: (rule: RedemptionRule) => (
-              <Text type="body">{rule.pointsCost.toLocaleString()}</Text>
+              <Text type="body">
+                {/* redemption_rules.points_cost is nullable in the live schema
+                    (redemption_rules_value_shape allows an unconfigured rule),
+                    so this cannot trust the notNull() in db/schema.ts. */}
+                {rule.pointsCost == null
+                  ? "Not configured"
+                  : rule.pointsCost.toLocaleString()}
+              </Text>
             ),
           },
           {
@@ -254,18 +294,30 @@ export default function RedemptionRulesPage() {
               label="Rule name"
               value={form.name}
               onChange={(name) => setForm({ ...form, name })}
+              onBlur={() => ruleStatus.onBlur("name")}
+              status={ruleStatus.statusFor("name")}
               isRequired
             />
             <TextInput
               label="Description"
               value={form.description ?? ""}
               onChange={(description) => setForm({ ...form, description })}
+              onBlur={() => ruleStatus.onBlur("description")}
+              status={ruleStatus.statusFor("description")}
               isOptional
             />
             <Text type="label" weight="bold">
               Redemption
             </Text>
             <Card>
+              {/* The discount type lives in a DropdownMenu, which has no status
+                  prop, so its cross-field errors surface here instead. */}
+              {ruleStatus.statusFor("discountType") && (
+                <Banner
+                  status="error"
+                  title={ruleStatus.statusFor("discountType")?.message}
+                />
+              )}
               <FormLayout
                 direction="horizontal"
                 style={{
@@ -310,9 +362,12 @@ export default function RedemptionRulesPage() {
                       isLabelHidden
                       size="sm"
                       value={form.pointsCost}
-                      onChange={(pointsCost) =>
-                        setForm({ ...form, pointsCost })
-                      }
+                      onChange={(pointsCost) => {
+                        setForm({ ...form, pointsCost });
+                        ruleStatus.onBlur("pointsCost");
+                      }}
+                      onBlur={() => ruleStatus.onBlur("pointsCost")}
+                      status={ruleStatus.statusFor("pointsCost")}
                       min={1}
                       width={"14%"}
                       isIntegerOnly
@@ -324,9 +379,12 @@ export default function RedemptionRulesPage() {
                       isLabelHidden
                       size="sm"
                       value={form.discountValue}
-                      onChange={(discountValue) =>
-                        setForm({ ...form, discountValue })
-                      }
+                      onChange={(discountValue) => {
+                        setForm({ ...form, discountValue });
+                        ruleStatus.onBlur("discountValue");
+                      }}
+                      onBlur={() => ruleStatus.onBlur("discountValue")}
+                      status={ruleStatus.statusFor("discountValue")}
                       min={0.01}
                       width={"10%"}
                     />
@@ -358,9 +416,12 @@ export default function RedemptionRulesPage() {
                     isLabelHidden
                     size="sm"
                     value={form.discountValue}
-                    onChange={(discountValue) =>
-                      setForm({ ...form, discountValue })
-                    }
+                    onChange={(discountValue) => {
+                      setForm({ ...form, discountValue });
+                      ruleStatus.onBlur("discountValue");
+                    }}
+                    onBlur={() => ruleStatus.onBlur("discountValue")}
+                    status={ruleStatus.statusFor("discountValue")}
                     min={0.001}
                   />
                 )}
@@ -386,7 +447,12 @@ export default function RedemptionRulesPage() {
                     isLabelHidden
                     size="sm"
                     value={form.priority}
-                    onChange={(priority) => setForm({ ...form, priority })}
+                    onChange={(priority) => {
+                      setForm({ ...form, priority });
+                      ruleStatus.onBlur("priority");
+                    }}
+                    onBlur={() => ruleStatus.onBlur("priority")}
+                    status={ruleStatus.statusFor("priority")}
                     isIntegerOnly
                     width={90}
                   />
@@ -423,9 +489,12 @@ export default function RedemptionRulesPage() {
                       isLabelHidden
                       size="sm"
                       value={form.perCustomerLimit}
-                      onChange={(perCustomerLimit) =>
-                        setForm({ ...form, perCustomerLimit })
-                      }
+                      onChange={(perCustomerLimit) => {
+                        setForm({ ...form, perCustomerLimit });
+                        ruleStatus.onBlur("perCustomerLimit");
+                      }}
+                      onBlur={() => ruleStatus.onBlur("perCustomerLimit")}
+                      status={ruleStatus.statusFor("perCustomerLimit")}
                       isIntegerOnly
                       min={1}
                       width={90}
@@ -465,9 +534,12 @@ export default function RedemptionRulesPage() {
                       isLabelHidden
                       size="sm"
                       value={form.tenantUsageLimit}
-                      onChange={(tenantUsageLimit) =>
-                        setForm({ ...form, tenantUsageLimit })
-                      }
+                      onChange={(tenantUsageLimit) => {
+                        setForm({ ...form, tenantUsageLimit });
+                        ruleStatus.onBlur("tenantUsageLimit");
+                      }}
+                      onBlur={() => ruleStatus.onBlur("tenantUsageLimit")}
+                      status={ruleStatus.statusFor("tenantUsageLimit")}
                       isIntegerOnly
                       min={1}
                       width={90}
@@ -485,18 +557,24 @@ export default function RedemptionRulesPage() {
                 isOptional
                 hasClear
                 value={isoToInput(form.activeFrom)}
-                onChange={(activeFrom) =>
-                  setForm({ ...form, activeFrom: activeFrom ?? null })
-                }
+                onChange={(activeFrom) => {
+                  setForm({ ...form, activeFrom: activeFrom ?? null });
+                  ruleStatus.onBlur("activeFrom");
+                }}
+                onBlur={() => ruleStatus.onBlur("activeFrom")}
+                status={ruleStatus.statusFor("activeFrom")}
               />
               <DateTimeInput
                 label="Active until"
                 isOptional
                 hasClear
                 value={isoToInput(form.activeUntil)}
-                onChange={(activeUntil) =>
-                  setForm({ ...form, activeUntil: activeUntil ?? null })
-                }
+                onChange={(activeUntil) => {
+                  setForm({ ...form, activeUntil: activeUntil ?? null });
+                  ruleStatus.onBlur("activeUntil");
+                }}
+                onBlur={() => ruleStatus.onBlur("activeUntil")}
+                status={ruleStatus.statusFor("activeUntil")}
               />
             </FormLayout>
             <Text type="label" weight="bold">

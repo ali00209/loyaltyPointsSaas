@@ -19,6 +19,12 @@ import {
   usePortalSignup,
   usePortalTenant,
 } from "@/lib/query";
+import { ApiError } from "@/lib/api";
+import {
+  CustomerLoginSchema,
+  CustomerSignupSchema,
+} from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 function PortalLanding() {
   const params = useParams<{ slug: string }>();
@@ -37,6 +43,39 @@ function PortalLanding() {
   const signupMutation = usePortalSignup();
   const ref = searchParams.get("ref") ?? undefined;
 
+  // One input serves both email and phone; the key decides which schema field the
+  // error lands on.
+  const identifier = email.trim();
+  const identifierKey = identifier.includes("@") ? "email" : "phone";
+  const identifierPayload = () =>
+    identifier.includes("@") ? { email: identifier } : { phone: identifier };
+
+  const [authServer, setAuthServer] = useState<ApiError["details"]>();
+  const authStatus = useFieldStatus(
+    mode === "login" ? CustomerLoginSchema : CustomerSignupSchema,
+    mode === "login"
+      ? { ...identifierPayload(), password }
+      : { name, ...identifierPayload(), password, ref },
+    authServer,
+  );
+
+  const reportAuthError = (err: unknown, fallback: string) => {
+    if (err instanceof ApiError && err.details) {
+      setAuthServer(err.details);
+      return;
+    }
+    showToast({
+      type: "error",
+      body: err instanceof Error ? err.message : fallback,
+    });
+  };
+
+  const switchMode = (next: "login" | "signup") => {
+    setMode(next);
+    setAuthServer(undefined);
+    authStatus.reset();
+  };
+
   useEffect(() => {
     if (!customerLoading && customer) {
       router.replace(`/p/${slug}/overview`);
@@ -49,21 +88,16 @@ function PortalLanding() {
 
   const handleLogin = async () => {
     if (loading) return;
+    authStatus.revealAll();
+    const parsed = CustomerLoginSchema.safeParse(identifierPayload());
+    if (!parsed.success) return;
+    setAuthServer(undefined);
     setLoading(true);
     try {
-      const identifier = email.trim();
-      await loginMutation.mutateAsync({
-        ...(identifier.includes("@")
-          ? { email: identifier }
-          : { phone: identifier }),
-        password,
-      });
+      await loginMutation.mutateAsync({ ...parsed.data, password });
       router.push(`/p/${slug}/overview`);
     } catch (err) {
-      showToast({
-        type: "error",
-        body: err instanceof Error ? err.message : "Failed to log in",
-      });
+      reportAuthError(err, "Failed to log in");
     } finally {
       setLoading(false);
     }
@@ -71,14 +105,19 @@ function PortalLanding() {
 
   const handleSignup = async () => {
     if (loading) return;
+    authStatus.revealAll();
+    const parsed = CustomerSignupSchema.safeParse({
+      name,
+      ...identifierPayload(),
+      password,
+      ref,
+    });
+    if (!parsed.success) return;
+    setAuthServer(undefined);
     setLoading(true);
     try {
-      const identifier = email.trim();
       const result = await signupMutation.mutateAsync({
-        name,
-        ...(identifier.includes("@")
-          ? { email: identifier }
-          : { phone: identifier }),
+        ...parsed.data,
         password,
         ref,
       });
@@ -91,10 +130,7 @@ function PortalLanding() {
       });
       router.push(`/p/${slug}/overview`);
     } catch (err) {
-      showToast({
-        type: "error",
-        body: err instanceof Error ? err.message : "Failed to create account",
-      });
+      reportAuthError(err, "Failed to create account");
     } finally {
       setLoading(false);
     }
@@ -126,13 +162,13 @@ function PortalLanding() {
               label="Log in"
               variant={mode === "login" ? "primary" : "ghost"}
               size="sm"
-              onClick={() => setMode("login")}
+              onClick={() => switchMode("login")}
             />
             <Button
               label="Sign up"
               variant={mode === "signup" ? "primary" : "ghost"}
               size="sm"
-              onClick={() => setMode("signup")}
+              onClick={() => switchMode("signup")}
             />
           </HStack>
 
@@ -150,6 +186,8 @@ function PortalLanding() {
                   placeholder="Alex Johnson"
                   value={name}
                   onChange={setName}
+                  onBlur={() => authStatus.onBlur("name")}
+                  status={authStatus.statusFor("name")}
                   isRequired
                 />
               )}
@@ -159,6 +197,8 @@ function PortalLanding() {
                 placeholder="you@example.com or +9203xxxxxx"
                 value={email}
                 onChange={setEmail}
+                onBlur={() => authStatus.onBlur(identifierKey)}
+                status={authStatus.statusFor(identifierKey)}
                 isRequired
               />
               <TextInput
@@ -167,6 +207,8 @@ function PortalLanding() {
                 placeholder="••••••••"
                 value={password}
                 onChange={setPassword}
+                onBlur={() => authStatus.onBlur("password")}
+                status={authStatus.statusFor("password")}
                 isRequired
               />
               {mode === "signup" && ref && (

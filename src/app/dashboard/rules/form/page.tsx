@@ -25,6 +25,11 @@ import {
 import AppLoading from "@/components/AppLoading";
 import ConditionSentenceEditor from "@/components/ConditionSentenceEditor";
 import { useRules, useCreateRule, useUpdateRule } from "@/lib/query";
+import { ApiError } from "@/lib/api";
+import { CreateRuleSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
+import type { FieldIssue } from "@/lib/form-status";
+import type { InputStatus } from "@astryxdesign/core";
 import {
   EVENT_CATALOG,
   eventLabel,
@@ -220,6 +225,31 @@ function isoToInput(
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` as ISODateTimeString;
 }
 
+/**
+ * Wizard invariants that `CreateRuleSchema` does not encode: a flat formula
+ * that awards nothing is a mistake, and a rate formula without a basis cannot
+ * be evaluated. These never reach the server as a 400, so they are reported as
+ * field issues instead of being toasted.
+ */
+function wizardIssues(s: WizardState): FieldIssue[] {
+  const issues: FieldIssue[] = [];
+  s.formulaGroups.forEach((g, i) => {
+    if (g.formulaType === "flat" && (g.structured.flatAmount ?? 0) <= 0) {
+      issues.push({
+        field: `formulaGroups.${i}.formula.flatAmount`,
+        message: "Flat amount must be greater than 0",
+      });
+    }
+    if (g.formulaType === "rate" && !g.structured.basis) {
+      issues.push({
+        field: `formulaGroups.${i}.formula.basis`,
+        message: "Basis is required for rate formulas",
+      });
+    }
+  });
+  return issues;
+}
+
 function stateToInput(s: WizardState): EarningRuleInput {
   const fieldless = getNumericFields(s.eventType, s.perItem).length === 0;
   const groups: FormulaGroup[] = s.formulaGroups.map((g) => ({
@@ -320,6 +350,8 @@ function FormulaGroupCard({
   onChange,
   onRemove,
   canRemove,
+  statusFor,
+  revealField,
 }: {
   group: FormulaGroupState;
   index: number;
@@ -329,6 +361,8 @@ function FormulaGroupCard({
   onChange: (index: number, updated: FormulaGroupState) => void;
   onRemove: (index: number) => void;
   canRemove: boolean;
+  statusFor: (key: string) => InputStatus | undefined;
+  revealField: (key: string) => void;
 }) {
   const numericFields = getNumericFields(eventType, perItem);
   const allFields = authoringFields(eventType, perItem);
@@ -439,10 +473,14 @@ function FormulaGroupCard({
                   isLabelHidden
                   units={"pts"}
                   value={group.structured.flatAmount}
-                  onChange={(v: number | null) =>
-                    updateStructured({ flatAmount: v ?? 0 })
-                  }
+                  onChange={(v: number | null) => {
+                    updateStructured({ flatAmount: v ?? 0 });
+                    revealField(`formulaGroups.${index}.formula.flatAmount`);
+                  }}
                   min={1}
+                  status={statusFor(
+                    `formulaGroups.${index}.formula.flatAmount`,
+                  )}
                 />
               )}
 
@@ -492,7 +530,13 @@ function FormulaGroupCard({
                       value: f.name,
                       label: f.label,
                     }))}
-                    onChange={(v: string) => updateStructured({ basis: v })}
+                    onChange={(v: string) => {
+                      updateStructured({ basis: v });
+                      revealField(`formulaGroups.${index}.formula.basis`);
+                    }}
+                    status={statusFor(
+                      `formulaGroups.${index}.formula.basis`,
+                    )}
                   />
                   <NumberInput
                     label="Rate (%)"
@@ -554,30 +598,23 @@ function RuleWizard({ editingRule }: { editingRule: EarningRule | null }) {
   );
   const uidCounter = useRef(0);
 
+  const [ruleServer, setRuleServer] = useState<ApiError["details"]>();
+  const [localIssues, setLocalIssues] = useState<FieldIssue[]>([]);
+  const ruleStatus = useFieldStatus(
+    CreateRuleSchema,
+    stateToInput(state),
+    localIssues.length ? localIssues : ruleServer,
+  );
+
   const handleSave = async () => {
-    if (!state.name.trim()) {
-      showToast({ type: "error", body: "Rule name is required" });
-      return;
-    }
-    for (let i = 0; i < state.formulaGroups.length; i++) {
-      const g = state.formulaGroups[i];
-      if (g.formulaType === "flat" && g.structured.flatAmount <= 0) {
-        showToast({
-          type: "error",
-          body: `Formula group ${i + 1}: flat amount must be greater than 0`,
-        });
-        return;
-      }
-      if (g.formulaType === "rate" && !g.structured.basis) {
-        showToast({
-          type: "error",
-          body: `Formula group ${i + 1}: basis is required for rate formulas`,
-        });
-        return;
-      }
-    }
+    ruleStatus.revealAll();
+    const input = stateToInput(state);
+    const parsed = CreateRuleSchema.safeParse(input);
+    setLocalIssues(wizardIssues(state));
+    if (!parsed.success) return;
+    setRuleServer(undefined);
+    setLocalIssues([]);
     try {
-      const input = stateToInput(state);
       if (editingRule) {
         await updateMutation.mutateAsync({ id: editingRule.id, input });
         showToast({ type: "info", body: "Rule updated" });
@@ -587,6 +624,10 @@ function RuleWizard({ editingRule }: { editingRule: EarningRule | null }) {
       }
       router.push("/dashboard/rules");
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setRuleServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to save rule",
@@ -660,6 +701,8 @@ function RuleWizard({ editingRule }: { editingRule: EarningRule | null }) {
             placeholder="e.g. Beverage Bonus"
             value={state.name}
             onChange={(v: string) => setState({ ...state, name: v })}
+            onBlur={() => ruleStatus.onBlur("name")}
+            status={ruleStatus.statusFor("name")}
             isRequired
           />
           <TextArea
@@ -750,6 +793,8 @@ function RuleWizard({ editingRule }: { editingRule: EarningRule | null }) {
               onChange={updateGroup}
               onRemove={removeGroup}
               canRemove={state.formulaGroups.length > 1}
+              statusFor={ruleStatus.statusFor}
+              revealField={ruleStatus.onBlur}
             />
           ))}
           <Button
@@ -863,7 +908,6 @@ function RuleWizard({ editingRule }: { editingRule: EarningRule | null }) {
             label={isEditing ? "Save changes" : "Create rule"}
             variant="primary"
             isLoading={createMutation.isPending || updateMutation.isPending}
-            isDisabled={!state.name.trim()}
             onClick={handleSave}
           />
         )}

@@ -27,7 +27,13 @@ import {
   useVoidInvoice,
 } from "@/lib/query";
 import { formatPKR } from "@/lib/money";
-import type { Invoice, InvoiceLineItem } from "@/types";
+import { ApiError } from "@/lib/api";
+import {
+  CreateInvoiceSchema,
+  RecordPaymentSchema,
+} from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
+import type { Invoice, InvoiceInput, InvoiceLineItem } from "@/types";
 
 interface LineEdit {
   description: string;
@@ -79,6 +85,30 @@ export default function AdminInvoicesPage() {
   const [payReference, setPayReference] = useState("");
   const [paySaving, setPaySaving] = useState(false);
 
+  const [editorServer, setEditorServer] = useState<ApiError["details"]>();
+  const editorStatus = useFieldStatus(
+    CreateInvoiceSchema,
+    {
+      tenantId,
+      lineItems: toLineItems(rows),
+      taxPercent,
+      memo: memo || null,
+    },
+    editorServer,
+  );
+
+  const [payServer, setPayServer] = useState<ApiError["details"]>();
+  const payStatus = useFieldStatus(
+    RecordPaymentSchema,
+    {
+      amount: payAmount,
+      method: payMethod,
+      reference: payReference || null,
+      note: null,
+    },
+    payServer,
+  );
+
   const tenantOptions = useMemo(
     () => tenants.map((t) => ({ value: t.id, label: t.name })),
     [tenants],
@@ -112,16 +142,24 @@ export default function AdminInvoicesPage() {
   };
 
   const handleSave = async () => {
-    if (!tenantId) {
-      toast({ type: "error", body: "Choose a merchant" });
-      return;
-    }
-    const lineItems = toLineItems(rows);
-    if (lineItems.length === 0) {
-      toast({ type: "error", body: "Add at least one line item" });
-      return;
-    }
-    const input = { tenantId, lineItems, taxPercent, memo: memo || null };
+    editorStatus.revealAll();
+    const parsed = CreateInvoiceSchema.safeParse({
+      tenantId,
+      lineItems: toLineItems(rows),
+      taxPercent,
+      memo: memo || null,
+    });
+    if (!parsed.success) return;
+    setEditorServer(undefined);
+    // The schema coerces unitPrice to a number; the API takes the Postgres
+    // numeric back as a string.
+    const input: InvoiceInput = {
+      ...parsed.data,
+      lineItems: parsed.data.lineItems.map((item) => ({
+        ...item,
+        unitPrice: String(item.unitPrice),
+      })),
+    };
     setSaving(true);
     try {
       if (editing) {
@@ -132,6 +170,10 @@ export default function AdminInvoicesPage() {
       toast({ type: "info", body: editing ? "Draft updated" : "Draft created" });
       setEditorOpen(false);
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setEditorServer(err.details);
+        return;
+      }
       toast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to save invoice",
@@ -167,25 +209,29 @@ export default function AdminInvoicesPage() {
   };
 
   const handleRecordPayment = async () => {
-    if (!selected || !payAmount || payAmount <= 0) {
-      toast({ type: "error", body: "Enter a positive payment amount" });
-      return;
-    }
+    payStatus.revealAll();
+    const parsed = RecordPaymentSchema.safeParse({
+      amount: payAmount,
+      method: payMethod,
+      reference: payReference || null,
+      note: null,
+    });
+    if (!parsed.success || !selected) return;
+    setPayServer(undefined);
     setPaySaving(true);
     try {
       await recordPayment.mutateAsync({
         invoiceId: selected.id,
-        input: {
-          amount: payAmount,
-          method: payMethod,
-          reference: payReference || null,
-          note: null,
-        },
+        input: parsed.data,
       });
       toast({ type: "info", body: "Payment recorded" });
       setPayAmount(0);
       setPayReference("");
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setPayServer(err.details);
+        return;
+      }
       toast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to record payment",
@@ -305,6 +351,7 @@ export default function AdminInvoicesPage() {
               value={tenantId}
               options={tenantOptions}
               onChange={setTenantId}
+              status={editorStatus.statusFor("tenantId")}
             />
             <VStack gap={2} hAlign="stretch">
               <Text type="label" weight="bold">
@@ -324,6 +371,10 @@ export default function AdminInvoicesPage() {
                       )
                     }
                     width="100%"
+                    onBlur={() => editorStatus.onBlur("lineItems")}
+                    status={
+                      i === 0 ? editorStatus.statusFor("lineItems") : undefined
+                    }
                   />
                   <NumberInput
                     label="Qty"
@@ -569,8 +620,12 @@ export default function AdminInvoicesPage() {
                         <NumberInput
                           label="Amount"
                           value={payAmount}
-                          onChange={setPayAmount}
+                          onChange={(v) => {
+                            setPayAmount(v ?? 0);
+                            payStatus.onBlur("amount");
+                          }}
                           min={0}
+                          status={payStatus.statusFor("amount")}
                         />
                         <Selector
                           label="Method"

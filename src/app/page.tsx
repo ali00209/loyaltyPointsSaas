@@ -20,6 +20,9 @@ import {
   useRegister,
   useSeedDemo,
 } from "@/lib/query";
+import { ApiError } from "@/lib/api";
+import { LoginSchema, RegisterSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 export default function HomePage() {
   const router = useRouter();
@@ -37,6 +40,15 @@ export default function HomePage() {
   const seedMutation = useSeedDemo();
 
   const dev = process.env.NODE_ENV === 'development'
+
+  const [authServer, setAuthServer] = useState<ApiError["details"]>();
+  const authStatus = useFieldStatus(
+    mode === "login" ? LoginSchema : RegisterSchema,
+    mode === "login"
+      ? { email, password }
+      : { email, password, name, businessName },
+    authServer,
+  );
 
   useEffect(() => {
     if (!checkingAuth && user) {
@@ -61,31 +73,45 @@ export default function HomePage() {
     }
   };
 
+  const reportAuthError = (err: unknown) => {
+    if (err instanceof ApiError && err.details) {
+      setAuthServer(err.details);
+      return;
+    }
+    showToast({
+      type: "error",
+      body:
+        err instanceof Error
+          ? err.message
+          : "Network error. Please try again.",
+    });
+  };
+
   const handleSubmit = async () => {
     if (loading) return;
+    authStatus.revealAll();
+    setAuthServer(undefined);
     setLoading(true);
 
     try {
       if (mode === "login") {
-        const loggedIn = await loginMutation.mutateAsync({ email, password });
+        const parsed = LoginSchema.safeParse({ email, password });
+        if (!parsed.success) return;
+        const loggedIn = await loginMutation.mutateAsync(parsed.data);
         router.push(loggedIn.role === "admin" ? "/admin" : "/dashboard");
       } else {
-        const registered = await registerMutation.mutateAsync({
+        const parsed = RegisterSchema.safeParse({
           email,
           password,
           name,
           businessName,
         });
+        if (!parsed.success) return;
+        const registered = await registerMutation.mutateAsync(parsed.data);
         router.push(registered.role === "admin" ? "/admin" : "/dashboard");
       }
     } catch (err) {
-      showToast({
-        type: "error",
-        body:
-          err instanceof Error
-            ? err.message
-            : "Network error. Please try again.",
-      });
+      reportAuthError(err);
     } finally {
       setLoading(false);
     }
@@ -93,6 +119,9 @@ export default function HomePage() {
 
   const toggleMode = () => {
     setMode(mode === "login" ? "register" : "login");
+    // Login and register enforce different rules; stale errors must not carry over.
+    setAuthServer(undefined);
+    authStatus.reset();
   };
 
   if (checkingAuth) {
@@ -149,6 +178,8 @@ export default function HomePage() {
                       placeholder="Alex Johnson"
                       value={name}
                       onChange={setName}
+                      onBlur={() => authStatus.onBlur("name")}
+                      status={authStatus.statusFor("name")}
                       isRequired
                     />
                     <TextInput
@@ -166,6 +197,8 @@ export default function HomePage() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={setEmail}
+                  onBlur={() => authStatus.onBlur("email")}
+                  status={authStatus.statusFor("email")}
                   isRequired
                 />
                 <TextInput
@@ -174,6 +207,8 @@ export default function HomePage() {
                   placeholder="••••••••"
                   value={password}
                   onChange={setPassword}
+                  onBlur={() => authStatus.onBlur("password")}
+                  status={authStatus.statusFor("password")}
                   isRequired
                 />
                 <Button

@@ -23,6 +23,9 @@ import {
 } from "@/lib/query";
 import { eventLabel } from "@/lib/rules";
 import type { Customer, Transaction } from "@/types";
+import { ApiError } from "@/lib/api";
+import { UpdateTenantSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 export default function AdminTenantDetailPage() {
   const params = useParams<{ id: string }>();
@@ -38,6 +41,13 @@ export default function AdminTenantDetailPage() {
   const [form, setForm] = useState({ name: "", slug: "", brandColor: "", logoUrl: "" });
   const showToast = useToast();
 
+  const [tenantServer, setTenantServer] = useState<ApiError["details"]>();
+  const tenantStatus = useFieldStatus(
+    UpdateTenantSchema,
+    { name: form.name, slug: form.slug },
+    tenantServer,
+  );
+
   if (tenantLoading || !tenant) {
     return <AppLoading label="Loading tenant..." />;
   }
@@ -49,17 +59,25 @@ export default function AdminTenantDetailPage() {
       brandColor: tenant.brandingConfig?.brandColor || "",
       logoUrl: tenant.brandingConfig?.logoUrl || "",
     });
+    setTenantServer(undefined);
+    tenantStatus.reset();
     setShowEdit(true);
   };
 
   const handleSave = async () => {
+    tenantStatus.revealAll();
+    const parsed = UpdateTenantSchema.safeParse({
+      name: form.name,
+      slug: form.slug,
+    });
+    if (!parsed.success) return;
+    setTenantServer(undefined);
     setSaving(true);
     try {
       await updateMutation.mutateAsync({
         id: tenant.id,
         input: {
-          name: form.name,
-          slug: form.slug || undefined,
+          ...parsed.data,
           brandingConfig: {
             brandColor: form.brandColor || null,
             logoUrl: form.logoUrl || null,
@@ -68,7 +86,11 @@ export default function AdminTenantDetailPage() {
       });
       showToast({ type: "info", body: "Tenant updated" });
       setShowEdit(false);
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setTenantServer(err.details);
+        return;
+      }
       showToast({ type: "error", body: "Failed to update tenant" });
     } finally {
       setSaving(false);
@@ -301,6 +323,8 @@ export default function AdminTenantDetailPage() {
             label="Business Name"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
+            onBlur={() => tenantStatus.onBlur("name")}
+            status={tenantStatus.statusFor("name")}
             isRequired
           />
           <TextInput
@@ -310,6 +334,8 @@ export default function AdminTenantDetailPage() {
             onChange={(v) =>
               setForm({ ...form, slug: v.toLowerCase().trim().replace(/[^a-z0-9-]/g, "-") })
             }
+            onBlur={() => tenantStatus.onBlur("slug")}
+            status={tenantStatus.statusFor("slug")}
             isRequired
           />
           <TextInput
@@ -338,7 +364,6 @@ export default function AdminTenantDetailPage() {
             label="Save"
             variant="primary"
             isLoading={saving}
-            isDisabled={!form.name}
             onClick={handleSave}
             width="100%"
           />

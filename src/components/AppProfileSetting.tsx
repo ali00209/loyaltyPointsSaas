@@ -17,6 +17,13 @@ import {
   useUpdateProfile,
   useChangePassword,
 } from "@/lib/query";
+import { ApiError } from "@/lib/api";
+import {
+  ChangePasswordSchema,
+  ConfirmPasswordSchema,
+  UpdateProfileSchema,
+} from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 import type { User } from "@/types";
 import AppHeader from "./AppHeader";
 
@@ -34,16 +41,40 @@ function ProfileForm({ user }: { user: User }) {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
 
+  const profileValues = { name: `${firstName} ${lastName}`.trim(), email };
+  const [profileServer, setProfileServer] = useState<ApiError["details"]>();
+  const profile = useFieldStatus(
+    UpdateProfileSchema,
+    profileValues,
+    profileServer,
+  );
+
+  const passwordValues = {
+    currentPassword: currentPw,
+    newPassword: newPw,
+    confirmPassword: confirmPw,
+  };
+  const [passwordServer, setPasswordServer] = useState<ApiError["details"]>();
+  const password = useFieldStatus(
+    ConfirmPasswordSchema,
+    passwordValues,
+    passwordServer,
+  );
+
   const handleSaveProfile = async () => {
-    const name = `${firstName} ${lastName}`.trim();
-    if (!name) {
-      showToast({ type: "error", body: "Name is required" });
-      return;
-    }
+    profile.revealAll();
+    const parsed = UpdateProfileSchema.safeParse(profileValues);
+    if (!parsed.success) return;
+    setProfileServer(undefined);
     try {
-      await updateProfile.mutateAsync({ name, email });
+      await updateProfile.mutateAsync(parsed.data);
       showToast({ type: "info", body: "Profile updated" });
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        profile.revealAll();
+        setProfileServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to update profile",
@@ -52,35 +83,26 @@ function ProfileForm({ user }: { user: User }) {
   };
 
   const handleSavePassword = async () => {
-    if (!currentPw) {
-      showToast({ type: "error", body: "Current password is required" });
-      return;
-    }
-    if (!newPw) {
-      showToast({ type: "error", body: "New password is required" });
-      return;
-    }
-    if (newPw.length < 6) {
-      showToast({
-        type: "error",
-        body: "New password must be at least 6 characters",
-      });
-      return;
-    }
-    if (newPw !== confirmPw) {
-      showToast({ type: "error", body: "Passwords do not match" });
-      return;
-    }
+    password.revealAll();
+    const parsed = ConfirmPasswordSchema.safeParse(passwordValues);
+    if (!parsed.success) return;
+    setPasswordServer(undefined);
     try {
       await changePassword.mutateAsync({
-        currentPassword: currentPw,
-        newPassword: newPw,
+        currentPassword: parsed.data.currentPassword,
+        newPassword: parsed.data.newPassword,
       });
       showToast({ type: "info", body: "Password updated" });
       setCurrentPw("");
       setNewPw("");
       setConfirmPw("");
+      password.reset();
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        password.revealAll();
+        setPasswordServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to change password",
@@ -104,18 +126,31 @@ function ProfileForm({ user }: { user: User }) {
           </Text>
         </VStack>
         <VStack gap={4}>
-          <TextInput label="Username" value={username} onChange={setUsername} />
+          <TextInput
+            label="Username"
+            value={username}
+            onChange={setUsername}
+          />
           <TextInput
             label="First name"
             value={firstName}
             onChange={setFirstName}
+            onBlur={() => profile.onBlur("name")}
+            status={profile.statusFor("name")}
           />
           <TextInput
             label="Last name"
             value={lastName}
             onChange={setLastName}
+            onBlur={() => profile.onBlur("name")}
           />
-          <TextInput label="Email address" value={email} onChange={setEmail} />
+          <TextInput
+            label="Email address"
+            value={email}
+            onChange={setEmail}
+            onBlur={() => profile.onBlur("email")}
+            status={profile.statusFor("email")}
+          />
           <HStack>
             <Button
               label="Save"
@@ -142,18 +177,24 @@ function ProfileForm({ user }: { user: User }) {
             type="password"
             value={currentPw}
             onChange={setCurrentPw}
+            onBlur={() => password.onBlur("currentPassword")}
+            status={password.statusFor("currentPassword")}
           />
           <TextInput
             label="New password"
             type="password"
             value={newPw}
             onChange={setNewPw}
+            onBlur={() => password.onBlur("newPassword")}
+            status={password.statusFor("newPassword")}
           />
           <TextInput
             label="Confirm password"
             type="password"
             value={confirmPw}
             onChange={setConfirmPw}
+            onBlur={() => password.onBlur("confirmPassword")}
+            status={password.statusFor("confirmPassword")}
           />
           <HStack>
             <Button

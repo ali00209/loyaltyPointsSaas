@@ -25,6 +25,9 @@ import {
   useUpdatePlan,
 } from "@/lib/query";
 import { formatPKR } from "@/lib/money";
+import { ApiError } from "@/lib/api";
+import { CreatePlanSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 import type { BillingCycle, Plan, PlanInput, Subscription } from "@/types";
 
 const defaultPlanForm: PlanInput = {
@@ -48,10 +51,14 @@ export default function AdminPlansPage() {
   const [editing, setEditing] = useState<Plan | null>(null);
   const [form, setForm] = useState<PlanInput>(defaultPlanForm);
   const [saving, setSaving] = useState(false);
+  const [planServer, setPlanServer] = useState<ApiError["details"]>();
+  const planStatus = useFieldStatus(CreatePlanSchema, form, planServer);
 
   const openCreate = () => {
     setEditing(null);
     setForm(defaultPlanForm);
+    setPlanServer(undefined);
+    planStatus.reset();
     setOpen(true);
   };
 
@@ -64,24 +71,30 @@ export default function AdminPlansPage() {
       taxPercent: Number(plan.taxPercent),
       active: plan.active,
     });
+    setPlanServer(undefined);
+    planStatus.reset();
     setOpen(true);
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.price || form.price <= 0) {
-      toast({ type: "error", body: "Name and a positive price are required" });
-      return;
-    }
+    planStatus.revealAll();
+    const parsed = CreatePlanSchema.safeParse(form);
+    if (!parsed.success) return;
+    setPlanServer(undefined);
     setSaving(true);
     try {
       if (editing) {
-        await updatePlan.mutateAsync({ id: editing.id, input: form });
+        await updatePlan.mutateAsync({ id: editing.id, input: parsed.data });
       } else {
-        await createPlan.mutateAsync(form);
+        await createPlan.mutateAsync(parsed.data);
       }
       toast({ type: "info", body: editing ? "Plan updated" : "Plan created" });
       setOpen(false);
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setPlanServer(err.details);
+        return;
+      }
       toast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to save plan",
@@ -354,6 +367,8 @@ export default function AdminPlansPage() {
             label="Plan name"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
+            onBlur={() => planStatus.onBlur("name")}
+            status={planStatus.statusFor("name")}
             isRequired
           />
           <NumberInput
@@ -361,6 +376,7 @@ export default function AdminPlansPage() {
             value={form.price}
             onChange={(v) => setForm({ ...form, price: v ?? 0 })}
             min={0.01}
+            status={planStatus.statusFor("price")}
             isRequired
           />
           <Selector
@@ -393,7 +409,6 @@ export default function AdminPlansPage() {
             label={editing ? "Save" : "Create"}
             variant="primary"
             isLoading={saving}
-            isDisabled={!form.name.trim() || !form.price}
             onClick={handleSave}
             width="100%"
           />

@@ -22,6 +22,9 @@ import {
   usePostPortalReview,
 } from "@/lib/query";
 import { formatPKR } from "@/lib/money";
+import { ApiError } from "@/lib/api";
+import { ReviewSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 
 interface ReviewTarget {
   purchaseId: string;
@@ -40,6 +43,18 @@ export default function PurchasesPage() {
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
   const [rating, setRating] = useState<number | null>(null);
   const [text, setText] = useState("");
+
+  const [reviewServer, setReviewServer] = useState<ApiError["details"]>();
+  const reviewStatus = useFieldStatus(
+    ReviewSchema,
+    {
+      purchaseId: reviewTarget?.purchaseId,
+      productId: reviewTarget?.productId,
+      rating: rating ?? undefined,
+      text,
+    },
+    reviewServer,
+  );
 
   if (customerLoading || purchasesLoading) {
     return <AppLoading label="Loading your purchases..." />;
@@ -68,15 +83,24 @@ export default function PurchasesPage() {
     setReviewTarget(target);
     setRating(null);
     setText("");
+    setReviewServer(undefined);
+    reviewStatus.reset();
   };
 
   const handleSubmitReview = async () => {
-    if (!reviewTarget || rating == null) return;
+    if (!reviewTarget) return;
+    reviewStatus.revealAll();
+    const parsed = ReviewSchema.safeParse({
+      purchaseId: reviewTarget.purchaseId,
+      productId: reviewTarget.productId,
+      rating: rating ?? undefined,
+      text,
+    });
+    if (!parsed.success) return;
+    setReviewServer(undefined);
     try {
       const result = await reviewMutation.mutateAsync({
-        purchaseId: reviewTarget.purchaseId,
-        productId: reviewTarget.productId,
-        rating,
+        ...parsed.data,
         text,
       });
       showToast({
@@ -87,6 +111,10 @@ export default function PurchasesPage() {
       });
       setReviewTarget(null);
     } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setReviewServer(err.details);
+        return;
+      }
       showToast({
         type: "error",
         body: err instanceof Error ? err.message : "Failed to submit review",
@@ -218,10 +246,14 @@ export default function PurchasesPage() {
           <NumberInput
             label="Rating (1–5)"
             value={rating}
-            onChange={setRating}
+            onChange={(v) => {
+              setRating(v);
+              reviewStatus.onBlur("rating");
+            }}
             min={1}
             max={5}
             isIntegerOnly
+            status={reviewStatus.statusFor("rating")}
             isRequired
           />
           <TextArea
@@ -229,6 +261,8 @@ export default function PurchasesPage() {
             placeholder="What did you think of this product?"
             value={text}
             onChange={setText}
+            onBlur={() => reviewStatus.onBlur("text")}
+            status={reviewStatus.statusFor("text")}
             rows={4}
             isOptional
           />

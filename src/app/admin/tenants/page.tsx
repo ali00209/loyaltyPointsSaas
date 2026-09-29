@@ -18,6 +18,9 @@ import AppLoading from "@/components/AppLoading";
 import AppHeader from "@/components/AppHeader";
 import { useAdminTenants, useCreateTenant } from "@/lib/query";
 import type { AdminTenant } from "@/types";
+import { ApiError } from "@/lib/api";
+import { CreateTenantSchema } from "@/lib/validations/schemas";
+import { useFieldStatus } from "@/lib/use-field-status";
 import { useRouter } from "next/navigation";
 
 export default function AdminTenantsPage() {
@@ -35,14 +38,24 @@ export default function AdminTenantsPage() {
   });
   const showToast = useToast();
 
+  const [tenantServer, setTenantServer] = useState<ApiError["details"]>();
+  const tenantStatus = useFieldStatus(CreateTenantSchema, form, tenantServer);
+
+  const openCreate = () => {
+    setTenantServer(undefined);
+    tenantStatus.reset();
+    setShowForm(true);
+  };
+
   const handleSave = async () => {
+    tenantStatus.revealAll();
+    const parsed = CreateTenantSchema.safeParse(form);
+    if (!parsed.success) return;
+    setTenantServer(undefined);
     setSaving(true);
     try {
       await createMutation.mutateAsync({
-        name: form.name,
-        ownerName: form.ownerName,
-        ownerEmail: form.ownerEmail,
-        ownerPassword: form.ownerPassword,
+        ...parsed.data,
         brandingConfig: {
           brandColor: form.brandColor || null,
         },
@@ -56,7 +69,11 @@ export default function AdminTenantsPage() {
         ownerPassword: "",
         brandColor: "",
       });
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError && err.details) {
+        setTenantServer(err.details);
+        return;
+      }
       showToast({ type: "error", body: "Failed to create tenant" });
     } finally {
       setSaving(false);
@@ -73,7 +90,7 @@ export default function AdminTenantsPage() {
         heading="Tenants"
         description="Manage businesses on the platform"
         showButton={true}
-        onClick={() => setShowForm(true)}
+        onClick={openCreate}
         showSearch={false}
         showFilter={false}
       />
@@ -91,7 +108,7 @@ export default function AdminTenantsPage() {
               <Button
                 label="Create Tenant"
                 variant="primary"
-                onClick={() => setShowForm(true)}
+                onClick={openCreate}
               />
             }
           />
@@ -181,6 +198,8 @@ export default function AdminTenantsPage() {
             placeholder="e.g. Acme Coffee"
             value={form.name}
             onChange={(v) => setForm({ ...form, name: v })}
+            onBlur={() => tenantStatus.onBlur("name")}
+            status={tenantStatus.statusFor("name")}
             isRequired
           />
           <TextInput
@@ -188,6 +207,8 @@ export default function AdminTenantsPage() {
             placeholder="Owner's full name"
             value={form.ownerName}
             onChange={(v) => setForm({ ...form, ownerName: v })}
+            onBlur={() => tenantStatus.onBlur("ownerName")}
+            status={tenantStatus.statusFor("ownerName")}
             isRequired
           />
           <TextInput
@@ -196,6 +217,8 @@ export default function AdminTenantsPage() {
             placeholder="owner@acme.com"
             value={form.ownerEmail}
             onChange={(v) => setForm({ ...form, ownerEmail: v })}
+            onBlur={() => tenantStatus.onBlur("ownerEmail")}
+            status={tenantStatus.statusFor("ownerEmail")}
             isRequired
           />
           <TextInput
@@ -204,6 +227,8 @@ export default function AdminTenantsPage() {
             placeholder="At least 6 characters"
             value={form.ownerPassword}
             onChange={(v) => setForm({ ...form, ownerPassword: v })}
+            onBlur={() => tenantStatus.onBlur("ownerPassword")}
+            status={tenantStatus.statusFor("ownerPassword")}
             isRequired
           />
           <TextInput
@@ -225,12 +250,6 @@ export default function AdminTenantsPage() {
             label="Create"
             variant="primary"
             isLoading={saving}
-            isDisabled={
-              !form.name ||
-              !form.ownerName ||
-              !form.ownerEmail ||
-              form.ownerPassword.length < 6
-            }
             onClick={handleSave}
             width="100%"
           />
