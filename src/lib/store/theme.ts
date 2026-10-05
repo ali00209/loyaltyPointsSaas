@@ -10,8 +10,10 @@ import { stoneTheme } from "@astryxdesign/theme-stone";
 import { y2kTheme } from "@astryxdesign/theme-y2k";
 
 import { loyaltyTheme } from "../themes/loyalty-theme";
+import { neoBrutalistTheme } from "../themes/neo-brutalist-theme";
 
 export const themeMap = {
+  "neo-brutalist": neoBrutalistTheme,
   y2k: y2kTheme,
   loyalty: loyaltyTheme,
   neutral: neutralTheme,
@@ -36,7 +38,7 @@ interface ThemeStore {
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set) => ({
-      themeName: "butter",
+      themeName: "loyalty",
       mode: "system",
 
       setThemeName: (themeName) => set({ themeName }),
