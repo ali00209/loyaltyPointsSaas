@@ -1074,6 +1074,11 @@ export function validateEventPayload(
         if (!Array.isArray(p.items)) {
           throw new Error("If provided, items must be an array");
         }
+        // An absent basket is an order-level purchase; an explicit empty one
+        // is a basket with no lines, which is never a real purchase.
+        if (p.items.length === 0) {
+          throw new Error("Purchase items must be a non-empty array when provided");
+        }
         for (const item of p.items) {
           if (!item || typeof item !== "object")
             throw new Error("Invalid line item");

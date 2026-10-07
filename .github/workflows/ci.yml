@@ -1,4 +1,4 @@
-name: Verify
+name: verify
 
 on:
   push:
@@ -11,14 +11,44 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    # API tests run against a real database (src/test/global-setup.ts builds
+    # the loyalty_test schema), so CI needs its own Postgres.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      JWT_SECRET: ci-jwt-secret
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: install node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
+      - run: npm install
       - run: npm ci
       - run: npm run verify
+
+  # Publish the Docker image only after verify passes.
+  build-and-push:
+    needs: verify
+    uses: ./.github/workflows/build-and-push.yml
+    secrets: inherit
