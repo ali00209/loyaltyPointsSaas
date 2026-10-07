@@ -36,6 +36,13 @@ swizzle <Name> eject component source for deep customization
 upgrade --apply run after any @astryxdesign/core bump
 <!-- ASTRYX:END -->
 
+TESTS (vitest — `npm test`):
+
+- API tests live in `src/app/api/__tests__/` and run against a **real** Postgres: `src/test/global-setup.ts` drops/creates the `loyalty_test` DB and replays `drizzle/*.sql` before the first test, so `POSTGRES_*` from `.env` must be valid and Postgres must be running.
+- `vitest.config.mts` points workers at `POSTGRES_DB=loyalty_test` and sets `fileParallelism: false` — every test file shares one database and truncates it per test.
+- Call route handlers directly (import `GET`/`POST` from `route.ts`; pass `{ params }` for dynamic segments via `routeParams()`). Mock the request scope in each test file with `vi.mock("next/headers", () => import("@/test/next-headers"));` — everything else (guards, drizzle, bcrypt, JWT) runs for real.
+- `src/test/helpers.ts`: `resetTestState()` in `beforeEach`, seeders (`seedTenant/seedOwner/seedAdmin/seedCustomer/seedApiKey`), sessions (`signInOwner/signInCustomer/openPortalSession/useBearer`), requests (`apiRequest/rawRequest/routeParams/jsonBody`). Seed users with `hashTestPassword()` — production `hashPassword()` costs ~0.6s per hash.
+
 Keep things simple and stupid:
 
     Does this need to exist? -> no: skip it (YAGNI)

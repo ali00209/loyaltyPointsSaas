@@ -258,21 +258,25 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
   const buildPayload = (): Record<string, unknown> => {
     const f = eventForm;
     switch (f.eventType) {
-      case "purchase":
+      case "purchase": {
+        const items = f.items
+          .filter(
+            (it) =>
+              it.productId && it.quantity != null && it.unitPrice != null,
+          )
+          .map((it) => ({
+            productId: it.productId,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+          }));
         return {
           orderAmount: f.orderAmount,
           ...(f.orderNumber ? { orderNumber: f.orderNumber } : {}),
-          items: f.items
-            .filter(
-              (it) =>
-                it.productId && it.quantity != null && it.unitPrice != null,
-            )
-            .map((it) => ({
-              productId: it.productId,
-              quantity: it.quantity,
-              unitPrice: it.unitPrice,
-            })),
+          // Line items are optional: an order-level purchase omits the key
+          // entirely rather than sending an empty basket.
+          ...(items.length > 0 ? { items } : {}),
         };
+      }
       case "review":
         return {
           purchaseId: f.purchaseId,
@@ -1274,7 +1278,7 @@ export default function AppLedgerPage({ view }: { view: LedgerView }) {
                 />
               </HStack>
               <Text type="label" weight="medium">
-                Line Items
+                Line Items (optional)
               </Text>
               <VStack gap={2} hAlign="stretch">
                 {eventForm.items.map((it, i) => (

@@ -1,9 +1,9 @@
 name: Build and Push Docker Image
 
+# Runs as a job of ci.yml (verify) via workflow_call, so it only starts after
+# lint, typecheck and tests are green. Kept dispatchable for manual rebuilds.
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
   workflow_dispatch:
 
 permissions:
