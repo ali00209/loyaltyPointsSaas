@@ -22,7 +22,7 @@ import {
   useUpdateTenant,
 } from "@/lib/query";
 import { eventLabel } from "@/lib/rules";
-import type { Customer, Transaction } from "@/types";
+import type { Customer, TenantApprovalStatus, Transaction } from "@/types";
 import { ApiError } from "@/lib/api";
 import { UpdateTenantSchema } from "@/lib/validations/schemas";
 import { useFieldStatus } from "@/lib/use-field-status";
@@ -109,13 +109,35 @@ export default function AdminTenantDetailPage() {
     }
   };
 
+  const handleApproval = async (approvalStatus: TenantApprovalStatus) => {
+    try {
+      await updateMutation.mutateAsync({
+        id: tenant.id,
+        input: { approvalStatus },
+      });
+      showToast({
+        type: "info",
+        body:
+          approvalStatus === "approved"
+            ? "Tenant approved"
+            : "Registration declined",
+      });
+    } catch {
+      showToast({ type: "error", body: "Failed to update approval status" });
+    }
+  };
+
   return (
     <VStack gap={6} hAlign="stretch">
       <HStack hAlign="between" vAlign="start">
         <VStack gap={1}>
           <HStack gap={2} vAlign="center">
             <Heading level={1}>{tenant.name}</Heading>
-            {tenant.suspended ? (
+            {tenant.approvalStatus === "pending" ? (
+              <Badge variant="blue" label="Pending approval" />
+            ) : tenant.approvalStatus === "rejected" ? (
+              <Badge variant="neutral" label="Declined" />
+            ) : tenant.suspended ? (
               <Badge variant="red" label="Suspended" />
             ) : (
               <Badge variant="green" label="Active" />
@@ -134,6 +156,43 @@ export default function AdminTenantDetailPage() {
           <Button label="Edit" variant="secondary" onClick={openEdit} />
         </HStack>
       </HStack>
+
+      {tenant.approvalStatus !== "approved" && (
+        <Banner
+          status={tenant.approvalStatus === "pending" ? "warning" : "error"}
+          title={
+            tenant.approvalStatus === "pending"
+              ? "This registration is awaiting approval"
+              : "This registration was declined"
+          }
+          description={
+            tenant.approvalStatus === "pending"
+              ? "The owner cannot sign in and the loyalty program stays inactive until you approve it."
+              : "The owner cannot sign in. Approve the registration to let them back in."
+          }
+          container="card"
+          endContent={
+            <HStack gap={2}>
+              <Button
+                label="Approve"
+                variant="primary"
+                size="sm"
+                isLoading={updateMutation.isPending}
+                onClick={() => handleApproval("approved")}
+              />
+              {tenant.approvalStatus === "pending" && (
+                <Button
+                  label="Decline"
+                  variant="secondary"
+                  size="sm"
+                  isLoading={updateMutation.isPending}
+                  onClick={() => handleApproval("rejected")}
+                />
+              )}
+            </HStack>
+          }
+        />
+      )}
 
       {tenant.suspended && (
         <Banner

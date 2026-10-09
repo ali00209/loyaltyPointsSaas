@@ -33,6 +33,7 @@ export default function HomePage() {
   const [businessName, setBusinessName] = useState("");
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [registeredPending, setRegisteredPending] = useState(false);
   const showToast = useToast();
   const { data: user, isLoading: checkingAuth } = useCurrentUser();
   const loginMutation = useLogin();
@@ -107,8 +108,10 @@ export default function HomePage() {
           businessName,
         });
         if (!parsed.success) return;
-        const registered = await registerMutation.mutateAsync(parsed.data);
-        router.push(registered.role === "admin" ? "/admin" : "/dashboard");
+        await registerMutation.mutateAsync(parsed.data);
+        // New registrations are inert until an admin approves them, so there
+        // is no dashboard to go to yet — tell the user to wait for review.
+        setRegisteredPending(true);
       }
     } catch (err) {
       reportAuthError(err);
@@ -128,6 +131,52 @@ export default function HomePage() {
     return (
       <Center axis="both" className="min-h-dvh bg-body">
         <Spinner size="lg" label="Loading..." />
+      </Center>
+    );
+  }
+
+  if (registeredPending) {
+    return (
+      <Center axis="both" className="min-h-dvh bg-body px-6 py-6">
+        <VStack gap={4} hAlign="center" width="100%" className="max-w-[400px]">
+          <VStack gap={2} hAlign="center">
+            <HStack
+              width={48}
+              height={48}
+              hAlign="center"
+              vAlign="center"
+              className="rounded-lg bg-(--color-brand-gold) text-(--color-brand-ink)"
+            >
+              <Icon icon={Star} size="lg" />
+            </HStack>
+            <Text type="body" weight="bold" size="lg">
+              LoyaltyHub
+            </Text>
+          </VStack>
+
+          <Card padding={8} width="100%">
+            <VStack gap={4} hAlign="stretch">
+              <VStack gap={1} hAlign="center">
+                <Heading level={2}>Registration received</Heading>
+                <Text type="body" color="secondary" size="sm" className="text-center">
+                  Your account for {businessName || "your business"} is awaiting
+                  admin approval. You can sign in as soon as it has been
+                  approved.
+                </Text>
+              </VStack>
+              <Button
+                label="Back to sign in"
+                variant="primary"
+                size="lg"
+                width="100%"
+                onClick={() => {
+                  setRegisteredPending(false);
+                  toggleMode();
+                }}
+              />
+            </VStack>
+          </Card>
+        </VStack>
       </Center>
     );
   }

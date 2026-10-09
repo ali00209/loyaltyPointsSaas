@@ -3,12 +3,15 @@ export interface BrandingConfig {
   brandColor?: string | null;
 }
 
+export type TenantApprovalStatus = "pending" | "approved" | "rejected";
+
 export interface AdminTenant extends Record<string, unknown> {
   id: string;
   name: string;
   slug: string;
   brandingConfig: BrandingConfig;
   suspended: boolean;
+  approvalStatus: TenantApprovalStatus;
   ownerName: string | null;
   ownerEmail: string | null;
   customerCount: number;
@@ -42,6 +45,7 @@ export interface UpdateTenantInput {
   slug?: string;
   brandingConfig?: BrandingConfig;
   suspended?: boolean;
+  approvalStatus?: TenantApprovalStatus;
 }
 
 export interface AdminOverview {

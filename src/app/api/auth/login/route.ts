@@ -42,11 +42,24 @@ export async function POST(req: NextRequest) {
           { status: 403 },
         );
       }
+      if (row.approvalStatus === "pending") {
+        return NextResponse.json(
+          { error: "Your account is awaiting admin approval." },
+          { status: 403 },
+        );
+      }
+      if (row.approvalStatus === "rejected") {
+        return NextResponse.json(
+          { error: "Your registration was declined. Contact support." },
+          { status: 403 },
+        );
+      }
       tenant = {
         id: row.id,
         name: row.name,
         brandingConfig: row.brandingConfig,
         suspended: row.suspended,
+        approvalStatus: row.approvalStatus,
       };
     }
 

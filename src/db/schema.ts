@@ -17,6 +17,14 @@ import type { FormulaGroup, RuleGroupType } from "@/lib/rules";
 
 export const roleEnum = pgEnum("user_role", ["admin", "owner"]);
 
+// Self-registered tenants start "pending" and are inert until an admin
+// approves them. Admin-provisioned tenants are created "approved".
+export const tenantApprovalStatusEnum = pgEnum("tenant_approval_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+
 export const transactionTypeEnum = pgEnum("transaction_type", [
   "earn",
   "redeem",
@@ -80,6 +88,9 @@ export const tenants = pgTable("tenants", {
     .$type<BrandingConfig>()
     .notNull()
     .default({}),
+  approvalStatus: tenantApprovalStatusEnum("approval_status")
+    .notNull()
+    .default("pending"),
   suspended: boolean("suspended").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

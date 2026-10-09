@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -47,8 +50,10 @@ jobs:
       - run: npm ci
       - run: npm run verify
 
-  # Publish the Docker image only after verify passes.
+  # Publish the Docker image only after verify passes — and only for real
+  # pushes to main, never from pull requests.
   build-and-push:
+    if: github.event_name == 'push'
     needs: verify
     uses: ./.github/workflows/build-and-push.yml
     secrets: inherit

@@ -21,7 +21,13 @@ import {
 } from "@/test/helpers";
 
 interface RegisteredUser {
-  user: { id: string; email: string; role: string; tenantId: string | null };
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    tenantId: string | null;
+    tenant?: { approvalStatus: string } | null;
+  };
 }
 
 beforeEach(resetTestState);
@@ -34,16 +40,18 @@ describe("POST /api/auth/register", () => {
     businessName: "Acme Coffee",
   };
 
-  it("creates a tenant, an owner, and sets the session cookie", async () => {
+  it("creates a tenant and owner that await admin approval, with no session yet", async () => {
     const res = await register(apiRequest("/api/auth/register", { method: "POST", body }));
 
     expect(res.status).toBe(201);
-    expect(res.cookies.get("auth_token")?.value).toBeTruthy();
+    // Nothing to sign in to until an admin approves the tenant.
+    expect(res.cookies.get("auth_token")).toBeUndefined();
 
     const payload = await jsonBody<RegisteredUser>(res);
     expect(payload.user.email).toBe("owner@acme.test");
     expect(payload.user.role).toBe("owner");
     expect(payload.user.tenantId).toBeTruthy();
+    expect(payload.user.tenant?.approvalStatus).toBe("pending");
 
     const [tenant] = await db
       .select()
@@ -51,11 +59,40 @@ describe("POST /api/auth/register", () => {
       .where(eq(tenants.id, payload.user.tenantId!));
     expect(tenant.name).toBe("Acme Coffee");
     expect(tenant.slug).toBe("acme-coffee");
+    expect(tenant.approvalStatus).toBe("pending");
 
     const [owner] = await db.select().from(users).where(eq(users.id, payload.user.id));
     expect(owner.role).toBe("owner");
     expect(owner.tenantId).toBe(payload.user.tenantId);
     expect(owner.passwordHash).not.toBe("secret123");
+  });
+
+  it("keeps the new account locked out until an admin approves it", async () => {
+    await register(apiRequest("/api/auth/register", { method: "POST", body }));
+
+    const signIn = () =>
+      login(
+        apiRequest("/api/auth/login", {
+          method: "POST",
+          body: { email: body.email, password: body.password },
+        }),
+      );
+
+    const blocked = await signIn();
+    expect(blocked.status).toBe(403);
+    expect(await jsonBody(blocked)).toEqual({
+      error: "Your account is awaiting admin approval.",
+    });
+    expect(blocked.cookies.get("auth_token")).toBeUndefined();
+
+    await db
+      .update(tenants)
+      .set({ approvalStatus: "approved" })
+      .where(eq(tenants.slug, "acme-coffee"));
+
+    const approved = await signIn();
+    expect(approved.status).toBe(200);
+    expect(approved.cookies.get("auth_token")?.value).toBeTruthy();
   });
 
   it("rejects a duplicate email", async () => {
@@ -148,6 +185,42 @@ describe("POST /api/auth/login", () => {
     );
 
     expect(res.status).toBe(403);
+    expect(res.cookies.get("auth_token")).toBeUndefined();
+  });
+
+  it("blocks a program awaiting approval", async () => {
+    const tenant = await seedTenant({ approvalStatus: "pending" });
+    const owner = await seedOwner(tenant.id);
+
+    const res = await login(
+      apiRequest("/api/auth/login", {
+        method: "POST",
+        body: { email: owner.email, password: TEST_PASSWORD },
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(await jsonBody(res)).toEqual({
+      error: "Your account is awaiting admin approval.",
+    });
+    expect(res.cookies.get("auth_token")).toBeUndefined();
+  });
+
+  it("blocks a declined registration", async () => {
+    const tenant = await seedTenant({ approvalStatus: "rejected" });
+    const owner = await seedOwner(tenant.id);
+
+    const res = await login(
+      apiRequest("/api/auth/login", {
+        method: "POST",
+        body: { email: owner.email, password: TEST_PASSWORD },
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(await jsonBody(res)).toEqual({
+      error: "Your registration was declined. Contact support.",
+    });
     expect(res.cookies.get("auth_token")).toBeUndefined();
   });
 });

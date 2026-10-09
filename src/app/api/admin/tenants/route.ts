@@ -36,6 +36,7 @@ export async function GET() {
       slug: tenants.slug,
       brandingConfig: tenants.brandingConfig,
       suspended: tenants.suspended,
+      approvalStatus: tenants.approvalStatus,
       createdAt: tenants.createdAt,
       ownerName: users.name,
       ownerEmail: users.email,
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest) {
         name,
         slug: slug ?? slugify(name),
         brandingConfig: brandingConfig || {},
+        // Provisioned by an admin, so the program is live from the start.
+        approvalStatus: "approved",
       })
       .returning();
     const [owner] = await tx
@@ -96,6 +99,7 @@ export async function POST(req: NextRequest) {
         slug: tenant.slug,
         brandingConfig: tenant.brandingConfig,
         suspended: tenant.suspended,
+        approvalStatus: tenant.approvalStatus,
         createdAt: tenant.createdAt,
         ownerName: tenant.owner.name,
         ownerEmail: tenant.owner.email,

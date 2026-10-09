@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { tenants, users } from "@/db/schema";
-import { createToken, hashPassword } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
 import { slugify } from "@/lib/slug";
 import { RegisterSchema, parseBody } from "@/lib/validations";
 import { eq } from "drizzle-orm";
@@ -19,15 +19,18 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await hashPassword(password);
 
-    const [user] = await db.transaction(async (tx) => {
+    const { user, tenant } = await db.transaction(async (tx) => {
       const [tenant] = await tx
         .insert(tenants)
         .values({
           name: businessName || "My Business",
           slug: slugify(businessName || "My Business"),
+          // Inert until an admin reviews the registration: the owner cannot
+          // sign in and no loyalty program activity is possible before then.
+          approvalStatus: "pending",
         })
         .returning();
-      return tx
+      const [user] = await tx
         .insert(users)
         .values({
           email,
@@ -37,10 +40,12 @@ export async function POST(req: NextRequest) {
           tenantId: tenant.id,
         })
         .returning();
+      return { user, tenant };
     });
 
-    const token = createToken(user.id);
-    const response = NextResponse.json(
+    // No session is issued: sign-in stays blocked until the tenant is
+    // approved, so there is nothing a cookie could unlock yet.
+    return NextResponse.json(
       {
         user: {
           id: user.id,
@@ -48,20 +53,17 @@ export async function POST(req: NextRequest) {
           name: user.name,
           role: user.role,
           tenantId: user.tenantId,
-          tenant: { id: user.tenantId, name: businessName || "My Business", brandingConfig: {}, suspended: false },
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            brandingConfig: tenant.brandingConfig,
+            suspended: tenant.suspended,
+            approvalStatus: tenant.approvalStatus,
+          },
         },
       },
       { status: 201 },
     );
-    response.cookies.set("auth_token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60,
-      path: "/",
-    });
-
-    return response;
   } catch (error) {
     console.error("Registration error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

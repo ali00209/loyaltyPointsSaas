@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("next/headers", () => import("@/test/next-headers"));
 
 import { GET as listTenants, POST as createTenant } from "@/app/api/admin/tenants/route";
+import { PUT as updateTenant } from "@/app/api/admin/tenants/[id]/route";
 import { db } from "@/db";
 import { customers, redemptionRules, tenants, users } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -10,6 +11,7 @@ import {
   apiRequest,
   jsonBody,
   resetTestState,
+  routeParams,
   seedAdmin,
   seedCustomer,
   seedOwner,
@@ -22,6 +24,7 @@ interface AdminTenant {
   name: string;
   slug: string;
   suspended: boolean;
+  approvalStatus: string;
   ownerEmail: string | null;
   customerCount: number;
   rewardCount: number;
@@ -67,6 +70,7 @@ describe("GET /api/admin/tenants", () => {
         pointsCost: 100,
       });
     const empty = await seedTenant({ name: "Bare Program" });
+    const pending = await seedTenant({ name: "New Shop", approvalStatus: "pending" });
 
     const res = await listTenants();
 
@@ -74,6 +78,7 @@ describe("GET /api/admin/tenants", () => {
     const payload = await jsonBody<{ tenants: AdminTenant[] }>(res);
     const acme = payload.tenants.find((t) => t.id === tenant.id)!;
     const bare = payload.tenants.find((t) => t.id === empty.id)!;
+    const newShop = payload.tenants.find((t) => t.id === pending.id)!;
 
     expect(acme).toMatchObject({
       name: "Acme Coffee",
@@ -81,8 +86,10 @@ describe("GET /api/admin/tenants", () => {
       customerCount: 2,
       rewardCount: 1,
       suspended: false,
+      approvalStatus: "approved",
     });
     expect(bare).toMatchObject({ customerCount: 0, rewardCount: 0, ownerEmail: null });
+    expect(newShop.approvalStatus).toBe("pending");
   });
 });
 
@@ -110,6 +117,8 @@ describe("POST /api/admin/tenants", () => {
 
     const [storedTenant] = await db.select().from(tenants).where(eq(tenants.id, payload.tenant.id));
     expect(storedTenant.name).toBe("Brew Bar");
+    // Admin-provisioned programs are live immediately — no approval queue.
+    expect(storedTenant.approvalStatus).toBe("approved");
 
     const [owner] = await db.select().from(users).where(eq(users.email, "olive@brewbar.test"));
     expect(owner.role).toBe("owner");
@@ -160,5 +169,72 @@ describe("POST /api/admin/tenants", () => {
     expect(res.status).toBe(400);
     const payload = await jsonBody<{ error: string }>(res);
     expect(payload.error).toBe("Validation failed");
+  });
+});
+
+describe("PUT /api/admin/tenants/[id]", () => {
+  const putBody = (id: string, body: Record<string, unknown>) =>
+    updateTenant(
+      apiRequest(`/api/admin/tenants/${id}`, { method: "PUT", body }),
+      routeParams({ id }),
+    );
+
+  it("rejects anonymous requests", async () => {
+    const tenant = await seedTenant({ approvalStatus: "pending" });
+
+    const res = await putBody(tenant.id, { approvalStatus: "approved" });
+
+    expect(res.status).toBe(401);
+    expect(await jsonBody(res)).toEqual({ error: "Unauthorized" });
+  });
+
+  it("rejects tenant owners", async () => {
+    const tenant = await seedTenant({ approvalStatus: "pending" });
+    signInOwner((await seedOwner(tenant.id)).id);
+
+    const res = await putBody(tenant.id, { approvalStatus: "approved" });
+
+    expect(res.status).toBe(403);
+    expect(await jsonBody(res)).toEqual({ error: "Admin access required" });
+  });
+
+  it("approves a pending registration", async () => {
+    const admin = await seedAdmin();
+    signInOwner(admin.id);
+    const tenant = await seedTenant({ approvalStatus: "pending" });
+
+    const res = await putBody(tenant.id, { approvalStatus: "approved" });
+
+    expect(res.status).toBe(200);
+    const payload = await jsonBody<{ tenant: AdminTenant }>(res);
+    expect(payload.tenant.approvalStatus).toBe("approved");
+
+    const [stored] = await db.select().from(tenants).where(eq(tenants.id, tenant.id));
+    expect(stored.approvalStatus).toBe("approved");
+  });
+
+  it("declines a pending registration", async () => {
+    const admin = await seedAdmin();
+    signInOwner(admin.id);
+    const tenant = await seedTenant({ approvalStatus: "pending" });
+
+    const res = await putBody(tenant.id, { approvalStatus: "rejected" });
+
+    expect(res.status).toBe(200);
+    const [stored] = await db.select().from(tenants).where(eq(tenants.id, tenant.id));
+    expect(stored.approvalStatus).toBe("rejected");
+  });
+
+  it("rejects an unknown approval status", async () => {
+    const admin = await seedAdmin();
+    signInOwner(admin.id);
+    const tenant = await seedTenant({ approvalStatus: "pending" });
+
+    const res = await putBody(tenant.id, { approvalStatus: "maybe" });
+
+    expect(res.status).toBe(400);
+    const payload = await jsonBody<{ error: string; details: { field: string }[] }>(res);
+    expect(payload.error).toBe("Validation failed");
+    expect(payload.details.some((d) => d.field === "approvalStatus")).toBe(true);
   });
 });

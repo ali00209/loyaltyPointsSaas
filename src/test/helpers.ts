@@ -48,7 +48,9 @@ export async function seedTenant(
 ): Promise<typeof tenants.$inferSelect> {
   const [row] = await db
     .insert(tenants)
-    .values({ name: "Acme Coffee", slug: unique("acme"), ...overrides })
+    // Tests exercise approved programs by default; pass approvalStatus to
+    // seed a tenant that is still awaiting review.
+    .values({ name: "Acme Coffee", slug: unique("acme"), approvalStatus: "approved", ...overrides })
     .returning();
   return row;
 }
