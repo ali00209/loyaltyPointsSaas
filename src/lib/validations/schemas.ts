@@ -477,6 +477,7 @@ export const UpdateTenantSchema = z.object({
   slug: slug.optional(),
   brandingConfig: z.record(z.string(), z.unknown()).optional(),
   suspended: z.boolean().optional(),
+  approvalStatus: z.enum(["pending", "approved", "rejected"]).optional(),
 });
 
 // ─── Settings ────────────────────────────────────────────────────────────────

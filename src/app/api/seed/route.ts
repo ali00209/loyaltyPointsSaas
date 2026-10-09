@@ -11,7 +11,12 @@ import {
 import { hashPassword } from "@/lib/auth";
 import { applyAdjust, applyEvent } from "@/lib/points";
 import { resetDemoData } from "@/lib/points";
-import type { EventType, FormulaGroup, RuleGroupType, StructuredFormula } from "@/lib/rules";
+import type {
+  EventType,
+  FormulaGroup,
+  RuleGroupType,
+  StructuredFormula,
+} from "@/lib/rules";
 import { eq } from "drizzle-orm";
 
 const ADMIN_EMAIL = "admin@loyaltyapp.com";
@@ -28,17 +33,38 @@ function rg(rules: RuleGroupType["rules"]): RuleGroupType {
   return { combinator: "and", rules };
 }
 
-function rate(basis: string, ratePct: number, opts?: Partial<StructuredFormula>): FormulaGroup {
+function rate(
+  basis: string,
+  ratePct: number,
+  opts?: Partial<StructuredFormula>,
+): FormulaGroup {
   return {
     conditions: ALL,
-    formula: { type: "rate", basis, rate: ratePct, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null, ...opts },
+    formula: {
+      type: "rate",
+      basis,
+      rate: ratePct,
+      flatAmount: 0,
+      rounding: "floor",
+      minPoints: null,
+      maxPoints: null,
+      ...opts,
+    },
   };
 }
 
 function flat(amount: number, conditions: RuleGroupType = ALL): FormulaGroup {
   return {
     conditions,
-    formula: { type: "flat", basis: "", rate: 0, flatAmount: amount, rounding: "floor", minPoints: null, maxPoints: null },
+    formula: {
+      type: "flat",
+      basis: "",
+      rate: 0,
+      flatAmount: amount,
+      rounding: "floor",
+      minPoints: null,
+      maxPoints: null,
+    },
   };
 }
 
@@ -62,6 +88,8 @@ export async function POST() {
         name: "Urban Coffee Co.",
         slug: "urban-coffee-co",
         brandingConfig: { brandColor: "#8c5a2b", logoUrl: null },
+        // The demo program must be usable immediately after seeding.
+        approvalStatus: "approved",
       })
       .returning();
 
@@ -78,16 +106,66 @@ export async function POST() {
       .insert(products)
       .values(
         [
-          { name: "Espresso", sku: "COF-001", price: "3.50", category: "Beverages" },
-          { name: "Cappuccino", sku: "COF-002", price: "4.50", category: "Beverages" },
-          { name: "Latte", sku: "COF-003", price: "5.00", category: "Beverages" },
-          { name: "Croissant", sku: "BAK-001", price: "3.00", category: "Bakery" },
-          { name: "Blueberry Muffin", sku: "BAK-002", price: "3.50", category: "Bakery" },
-          { name: "Avocado Toast", sku: "FOD-001", price: "8.50", category: "Food" },
-          { name: "Breakfast Burrito", sku: "FOD-002", price: "9.00", category: "Food" },
-          { name: "Seasonal Blend Bag (250g)", sku: "RTL-001", price: "14.99", category: "Retail" },
-          { name: "Ceramic Mug", sku: "RTL-002", price: "12.00", category: "Retail" },
-          { name: "Cold Brew (Large)", sku: "COF-004", price: "5.50", category: "Beverages" },
+          {
+            name: "Espresso",
+            sku: "COF-001",
+            price: "3.50",
+            category: "Beverages",
+          },
+          {
+            name: "Cappuccino",
+            sku: "COF-002",
+            price: "4.50",
+            category: "Beverages",
+          },
+          {
+            name: "Latte",
+            sku: "COF-003",
+            price: "5.00",
+            category: "Beverages",
+          },
+          {
+            name: "Croissant",
+            sku: "BAK-001",
+            price: "3.00",
+            category: "Bakery",
+          },
+          {
+            name: "Blueberry Muffin",
+            sku: "BAK-002",
+            price: "3.50",
+            category: "Bakery",
+          },
+          {
+            name: "Avocado Toast",
+            sku: "FOD-001",
+            price: "8.50",
+            category: "Food",
+          },
+          {
+            name: "Breakfast Burrito",
+            sku: "FOD-002",
+            price: "9.00",
+            category: "Food",
+          },
+          {
+            name: "Seasonal Blend Bag (250g)",
+            sku: "RTL-001",
+            price: "14.99",
+            category: "Retail",
+          },
+          {
+            name: "Ceramic Mug",
+            sku: "RTL-002",
+            price: "12.00",
+            category: "Retail",
+          },
+          {
+            name: "Cold Brew (Large)",
+            sku: "COF-004",
+            price: "5.50",
+            category: "Beverages",
+          },
         ].map((p) => ({ ...p, tenantId: tenant.id })),
       )
       .returning();
@@ -118,8 +196,18 @@ export async function POST() {
         perItem: true,
         formulaGroups: [
           {
-            conditions: rg([{ field: "productCategory", operator: "=", value: "Beverages" }]),
-            formula: { type: "rate", basis: "quantity", rate: 200, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+            conditions: rg([
+              { field: "productCategory", operator: "=", value: "Beverages" },
+            ]),
+            formula: {
+              type: "rate",
+              basis: "quantity",
+              rate: 200,
+              flatAmount: 0,
+              rounding: "floor",
+              minPoints: null,
+              maxPoints: null,
+            },
           },
         ],
         pointsExpireAfterDays: null,
@@ -131,8 +219,18 @@ export async function POST() {
         perItem: true,
         formulaGroups: [
           {
-            conditions: rg([{ field: "productCategory", operator: "=", value: "Bakery" }]),
-            formula: { type: "rate", basis: "quantity", rate: 200, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+            conditions: rg([
+              { field: "productCategory", operator: "=", value: "Bakery" },
+            ]),
+            formula: {
+              type: "rate",
+              basis: "quantity",
+              rate: 200,
+              flatAmount: 0,
+              rounding: "floor",
+              minPoints: null,
+              maxPoints: null,
+            },
           },
         ],
         pointsExpireAfterDays: null,
@@ -148,7 +246,15 @@ export async function POST() {
               { field: "orderAmount", operator: ">=", value: 20 },
               { field: "orderAmount", operator: "<=", value: 50 },
             ]),
-            formula: { type: "rate", basis: "orderAmount", rate: 200, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+            formula: {
+              type: "rate",
+              basis: "orderAmount",
+              rate: 200,
+              flatAmount: 0,
+              rounding: "floor",
+              minPoints: null,
+              maxPoints: null,
+            },
           },
         ],
         pointsExpireAfterDays: null,
@@ -160,8 +266,18 @@ export async function POST() {
         perItem: false,
         formulaGroups: [
           {
-            conditions: rg([{ field: "itemQuantity", operator: ">=", value: 3 }]),
-            formula: { type: "rate", basis: "itemQuantity", rate: 500, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+            conditions: rg([
+              { field: "itemQuantity", operator: ">=", value: 3 },
+            ]),
+            formula: {
+              type: "rate",
+              basis: "itemQuantity",
+              rate: 500,
+              flatAmount: 0,
+              rounding: "floor",
+              minPoints: null,
+              maxPoints: null,
+            },
           },
         ],
         pointsExpireAfterDays: 30,
@@ -173,8 +289,18 @@ export async function POST() {
         perItem: false,
         formulaGroups: [
           {
-            conditions: rg([{ field: "orderAmount", operator: ">=", value: 50 }]),
-            formula: { type: "rate", basis: "orderAmount", rate: 300, flatAmount: 0, rounding: "floor", minPoints: null, maxPoints: null },
+            conditions: rg([
+              { field: "orderAmount", operator: ">=", value: 50 },
+            ]),
+            formula: {
+              type: "rate",
+              basis: "orderAmount",
+              rate: 300,
+              flatAmount: 0,
+              rounding: "floor",
+              minPoints: null,
+              maxPoints: null,
+            },
           },
         ],
         pointsExpireAfterDays: 180,
@@ -227,7 +353,12 @@ export async function POST() {
         eventType: "visit",
         perItem: false,
         formulaGroups: [
-          flat(50, rg([{ field: "visitCount", operator: "in", value: [5, 10, 15, 20] }])),
+          flat(
+            50,
+            rg([
+              { field: "visitCount", operator: "in", value: [5, 10, 15, 20] },
+            ]),
+          ),
         ],
         pointsExpireAfterDays: null,
       },
@@ -244,13 +375,37 @@ export async function POST() {
 
     // --- Customers ---
     const customerData = [
-      { name: "Sarah Mitchell", email: PORTAL_EMAIL, phone: "+1-555-0101" },
-      { name: "James Chen", email: "james.chen@email.com", phone: "+1-555-0102" },
-      { name: "Maria Rodriguez", email: "maria.r@email.com", phone: "+1-555-0103" },
-      { name: "David Kim", email: "david.k@email.com", phone: "+1-555-0104" },
-      { name: "Emily Watson", email: "emily.w@email.com", phone: "+1-555-0105" },
-      { name: "Robert Taylor", email: "robert.t@email.com", phone: "+1-555-0106" },
-      { name: "Lisa Park", email: "lisa.p@email.com", phone: "+1-555-0107" },
+      { name: "Sarah Ahmed", email: PORTAL_EMAIL, phone: "+92-300-1234567" },
+      {
+        name: "Ahmed Khan",
+        email: "ahmed.khan@email.com",
+        phone: "+92-301-2345678",
+      },
+      {
+        name: "Fatima Malik",
+        email: "fatima.m@email.com",
+        phone: "+92-302-3456789",
+      },
+      {
+        name: "Bilal Hussain",
+        email: "bilal.h@email.com",
+        phone: "+92-303-4567890",
+      },
+      {
+        name: "Ayesha Siddiqui",
+        email: "ayesha.s@email.com",
+        phone: "+92-304-5678901",
+      },
+      {
+        name: "Usman Tariq",
+        email: "usman.t@email.com",
+        phone: "+92-305-6789012",
+      },
+      {
+        name: "Zainab Raza",
+        email: "zainab.r@email.com",
+        phone: "+92-306-7890123",
+      },
     ];
 
     const insertedCustomers = [];
@@ -265,7 +420,9 @@ export async function POST() {
           phone: c.phone,
           referralCode: code(),
           passwordHash:
-            c.email === PORTAL_EMAIL ? await hashPassword(PORTAL_PASSWORD) : null,
+            c.email === PORTAL_EMAIL
+              ? await hashPassword(PORTAL_PASSWORD)
+              : null,
           joinDate: new Date(Date.now() - (7 - i) * 86400000),
         })
         .returning();
@@ -282,7 +439,10 @@ export async function POST() {
         discountValue: "10",
         pointsCost: 300,
         priority: 10,
-        conditions: { combinator: "and", rules: [{ field: "orderAmount", operator: ">=", value: 10 }] },
+        conditions: {
+          combinator: "and",
+          rules: [{ field: "orderAmount", operator: ">=", value: 10 }],
+        },
       },
       {
         tenantId: tenant.id,
@@ -292,22 +452,50 @@ export async function POST() {
         discountValue: "5",
         pointsCost: 500,
         priority: 5,
-        conditions: { combinator: "and", rules: [{ field: "orderAmount", operator: ">=", value: 25 }] },
+        conditions: {
+          combinator: "and",
+          rules: [{ field: "orderAmount", operator: ">=", value: 25 }],
+        },
       },
     ]);
 
-    const [espresso, cappuccino, latte, croissant, muffin, avocado, burrito, beans, mug, coldBrew] =
-      insertedProducts;
+    const [
+      espresso,
+      cappuccino,
+      latte,
+      croissant,
+      muffin,
+      avocado,
+      burrito,
+      beans,
+      mug,
+      coldBrew,
+    ] = insertedProducts;
 
-    const item = (product: (typeof insertedProducts)[number], quantity = 1, unitPrice?: string) => ({
+    const item = (
+      product: (typeof insertedProducts)[number],
+      quantity = 1,
+      unitPrice?: string,
+    ) => ({
       productId: product.id,
       quantity,
       unitPrice: unitPrice ?? product.price,
     });
 
     // --- Events ---
-    const event = (customerId: string, eventType: Parameters<typeof applyEvent>[0]["eventType"], payload: Record<string, unknown>, eventKey?: string) =>
-      applyEvent({ tenantId: tenant.id, customerId, eventType, payload, eventKey });
+    const event = (
+      customerId: string,
+      eventType: Parameters<typeof applyEvent>[0]["eventType"],
+      payload: Record<string, unknown>,
+      eventKey?: string,
+    ) =>
+      applyEvent({
+        tenantId: tenant.id,
+        customerId,
+        eventType,
+        payload,
+        eventKey,
+      });
 
     // Sarah: signup, first purchase, reviews, newsletter
     await event(insertedCustomers[0].id, "customer_signup", {});
@@ -324,13 +512,23 @@ export async function POST() {
     await event(
       insertedCustomers[0].id,
       "review",
-      { purchaseId: "seed", productId: latte.id, rating: 5, text: "Best latte in town" },
+      {
+        purchaseId: "seed",
+        productId: latte.id,
+        rating: 5,
+        text: "Best latte in town",
+      },
       `review:${insertedCustomers[0].id}:${latte.id}`,
     );
     await event(
       insertedCustomers[0].id,
       "review",
-      { purchaseId: "seed", productId: croissant.id, rating: 4, text: "Buttery and fresh" },
+      {
+        purchaseId: "seed",
+        productId: croissant.id,
+        rating: 4,
+        text: "Buttery and fresh",
+      },
       `review:${insertedCustomers[0].id}:${croissant.id}`,
     );
     await event(insertedCustomers[0].id, "newsletter_signup", {});
@@ -381,7 +579,9 @@ export async function POST() {
 
     // Emily: newsletter + social share
     await event(insertedCustomers[4].id, "newsletter_signup", {});
-    await event(insertedCustomers[4].id, "social_share", { platform: "instagram" });
+    await event(insertedCustomers[4].id, "social_share", {
+      platform: "instagram",
+    });
 
     // Robert: small purchase
     await event(
@@ -409,10 +609,30 @@ export async function POST() {
 
     // --- Opening balances ---
     await Promise.all([
-      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[0].id, points: 400, description: "Opening balance" }),
-      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[1].id, points: 250, description: "Opening balance" }),
-      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[3].id, points: 1000, description: "Opening balance" }),
-      applyAdjust({ tenantId: tenant.id, customerId: insertedCustomers[6].id, points: 500, description: "Opening balance" }),
+      applyAdjust({
+        tenantId: tenant.id,
+        customerId: insertedCustomers[0].id,
+        points: 400,
+        description: "Opening balance",
+      }),
+      applyAdjust({
+        tenantId: tenant.id,
+        customerId: insertedCustomers[1].id,
+        points: 250,
+        description: "Opening balance",
+      }),
+      applyAdjust({
+        tenantId: tenant.id,
+        customerId: insertedCustomers[3].id,
+        points: 1000,
+        description: "Opening balance",
+      }),
+      applyAdjust({
+        tenantId: tenant.id,
+        customerId: insertedCustomers[6].id,
+        points: 500,
+        description: "Opening balance",
+      }),
     ]);
 
     // --- Visits (QR punch card): Sarah checks in on 5 distinct days, hitting the
@@ -420,7 +640,9 @@ export async function POST() {
     //    derives visit:{customer}:{date}, one stamp per day).
     const sarah = insertedCustomers[0];
     for (let d = 5; d >= 1; d--) {
-      const day = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+      const day = new Date(Date.now() - d * 86400000)
+        .toISOString()
+        .slice(0, 10);
       await event(
         sarah.id,
         "visit",

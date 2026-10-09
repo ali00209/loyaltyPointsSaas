@@ -37,6 +37,7 @@ export interface CurrentUser {
     slug?: string | null;
     brandingConfig: Record<string, unknown>;
     suspended: boolean;
+    approvalStatus: "pending" | "approved" | "rejected";
   } | null;
 }
 
@@ -85,6 +86,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       tenantSlug: tenants.slug,
       tenantBrandingConfig: tenants.brandingConfig,
       tenantSuspended: tenants.suspended,
+      tenantApprovalStatus: tenants.approvalStatus,
     })
     .from(users)
     .leftJoin(tenants, eq(users.tenantId, tenants.id))
@@ -107,6 +109,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
           slug: row.tenantSlug,
           brandingConfig: (row.tenantBrandingConfig as Record<string, unknown>) ?? {},
           suspended: row.tenantSuspended ?? false,
+          approvalStatus: row.tenantApprovalStatus ?? "pending",
         }
       : null,
   };
@@ -125,6 +128,11 @@ export function requireTenant(user: CurrentUser | null): string {
   if (!user) throw unauthorized();
   if (user.role !== "owner" || !user.tenantId) throw forbidden("Owner account required");
   if (user.tenant?.suspended) throw forbidden("Your account is suspended");
+  // Defense in depth: sign-in already blocks unapproved tenants, but a live
+  // session must not outlive a revocation of approval either.
+  if (user.tenant && user.tenant.approvalStatus !== "approved") {
+    throw forbidden("Your account is awaiting admin approval");
+  }
   return user.tenantId;
 }
 

@@ -164,8 +164,12 @@ export default function AdminTenantsPage() {
             key: "status",
             header: "Status",
             renderCell: (t: AdminTenant) =>
-              t.suspended ? (
+              t.approvalStatus === "pending" ? (
+                <Badge variant="blue" label="Pending" />
+              ) : t.suspended ? (
                 <Badge variant="red" label="Suspended" />
+              ) : t.approvalStatus === "rejected" ? (
+                <Badge variant="neutral" label="Declined" />
               ) : (
                 <Badge variant="green" label="Active" />
               ),

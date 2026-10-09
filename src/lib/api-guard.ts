@@ -46,7 +46,7 @@ export async function requirePortalTenant(): Promise<
     return requireApiKeyTenant();
   }
   const [tenant] = await db
-    .select({ id: tenants.id, suspended: tenants.suspended })
+    .select({ id: tenants.id, suspended: tenants.suspended, approvalStatus: tenants.approvalStatus })
     .from(tenants)
     .where(eq(tenants.id, payload.tenantId))
     .limit(1);
@@ -58,6 +58,11 @@ export async function requirePortalTenant(): Promise<
   if (tenant.suspended) {
     return {
       error: NextResponse.json({ error: "This loyalty program is suspended" }, { status: 403 }),
+    };
+  }
+  if (tenant.approvalStatus !== "approved") {
+    return {
+      error: NextResponse.json({ error: "This loyalty program is not active" }, { status: 403 }),
     };
   }
   const { publicStorefront } = await getAppSettings(tenant.id);

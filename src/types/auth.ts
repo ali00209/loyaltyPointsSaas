@@ -1,3 +1,5 @@
+import type { TenantApprovalStatus } from "./tenant";
+
 export type UserRole = "admin" | "owner";
 
 export interface TenantSummary {
@@ -5,6 +7,7 @@ export interface TenantSummary {
   name: string;
   brandingConfig: Record<string, unknown>;
   suspended: boolean;
+  approvalStatus: TenantApprovalStatus;
 }
 
 export interface User {

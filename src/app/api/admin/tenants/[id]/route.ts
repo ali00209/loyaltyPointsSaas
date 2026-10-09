@@ -19,6 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       slug: tenants.slug,
       brandingConfig: tenants.brandingConfig,
       suspended: tenants.suspended,
+      approvalStatus: tenants.approvalStatus,
       createdAt: tenants.createdAt,
       ownerName: users.name,
       ownerEmail: users.email,
@@ -80,6 +81,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.slug !== undefined) setValues.slug = body.slug;
   if (body.brandingConfig !== undefined) setValues.brandingConfig = body.brandingConfig;
   if (body.suspended !== undefined) setValues.suspended = body.suspended;
+  if (body.approvalStatus !== undefined) setValues.approvalStatus = body.approvalStatus;
 
   const [tenant] = await db
     .update(tenants)
